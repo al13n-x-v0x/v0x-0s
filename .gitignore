@@ -1,0 +1,21 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# secrets — never commit
+server/.env
+server/.vox-keys.json
+.env
+.env.local
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# tool state
+.freebuff/
