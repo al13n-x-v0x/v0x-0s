@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Release signing. Reads android/keystore.properties (gitignored — never commit
+// the keystore or its passwords to a public repo). If the file is missing, the
+// release buildType falls back to unsigned and assembleDebug still works.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+def releaseStoreFile = keystorePropsFile.exists() ? rootProject.file(keystoreProps['storeFile']) : null
+
 android {
     namespace "com.voxos.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +18,8 @@ android {
         applicationId "com.voxos.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +27,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseStoreFile != null) {
+                storeFile releaseStoreFile
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig releaseStoreFile != null ? signingConfigs.release : null
         }
     }
 }

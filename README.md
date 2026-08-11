@@ -82,6 +82,8 @@ VOX-OS is a **developer control center** that feels like an operating system: a 
 ### 1 · Get the APK
 Grab **`VOX-OS.apk`** from this repo (or run `npm run apk:build` to compile it yourself — requires the Android SDK).
 
+> **🚀 Signed release build:** `VOX-OS-release.apk` (v1.1.0) is signed with a dedicated release keystore and ready to distribute. Rebuild it anytime with `npm run apk:release`. The keystore itself lives only on the build machine (never in this repo) — back it up, because Android requires the **same key** for every future update of the app.
+
 ### 2 · Install it
 - Copy the APK to your phone (USB, Google Drive, or download straight from GitHub)
 - Tap it → allow **"Install unknown apps"** for your file manager/browser
