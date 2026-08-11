@@ -34,7 +34,8 @@ export type SectionId =
   | 'agent'
   | 'profile'
   | 'history'
-  | 'security';
+  | 'security'
+  | 'remote';
 
 export interface NavItem {
   id: SectionId;
@@ -72,6 +73,7 @@ export interface AppError {
   detail?: string;
   severity: 'error' | 'warning';
   resolved: boolean;
+  count?: number;
 }
 
 export interface CommandHistoryItem {
@@ -165,6 +167,17 @@ export interface AIUsage {
   avgLatencyMs: number | null;
   errors: number;
   successRate: number | null;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  time: number;
+  projectId: string;
+  tabs: string[];
+  activeFile: string | null;
+  terminals: TerminalSession[];
+  aiMessages: AIMessage[];
 }
 
 // ---------- Health ----------

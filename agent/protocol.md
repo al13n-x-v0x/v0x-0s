@@ -23,6 +23,7 @@ token printed at daemon start (or read from `agent/.vox-agent.json`).
 { "id": 3, "type": "subscribe", "interval": 2000 }             // push stats events
 { "id": 4, "type": "ping" }
 { "id": 5, "type": "request_permission", "perm": "TERMINAL" }
+{ "id": 5b, "type": "allow_all" }                            // grant every capability (same as --allow-all)
 { "id": 6, "type": "processes" }                               // PROCESS_LIST
 { "id": 7, "type": "exec_open", "shell": "powershell|bash|cmd", "cwd": "…", "sid": "term-1" }
 { "id": 8, "type": "exec_input", "sid": "term-1", "data": "git status\n" }

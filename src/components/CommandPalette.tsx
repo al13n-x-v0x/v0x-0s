@@ -25,6 +25,9 @@ export function CommandPalette() {
   const projects = useVox((s) => s.projects);
   const activeProjectId = useVox((s) => s.activeProjectId);
   const openProject = useVox((s) => s.openProject);
+  const saveWorkspace = useVox((s) => s.saveWorkspace);
+  const restoreWorkspace = useVox((s) => s.restoreWorkspace);
+  const workspaces = useVox((s) => s.workspaces);
   const openFile = useVox((s) => s.openFile);
   const recordCommand = useVox((s) => s.recordCommand);
   const runHealthScan = useVox((s) => s.runHealthScan);
@@ -103,7 +106,8 @@ export function CommandPalette() {
       ['View Event Log', 'Open the event log', () => setSection('eventlog')],
       ['Create Backup', 'Back up configuration', () => createBackup()],
       ['Run Diagnostics', 'Full auto diagnostics', () => void runDiagnostics()],
-      ['Switch Workspace', 'Open the projects page', () => setSection('projects')],
+      ['Save Workspace', 'Snapshot files, terminals, AI context', () => saveWorkspace('')],
+      ['Manage Workspaces', 'Open the workspace manager', () => setSection('projects')],
       ['Switch AI Provider', 'Open the AI Engine', () => setSection('aiengine')],
       ['Analyze Project', 'Ask VOX to analyze', () => void sendMessage('Review my project and give me an intelligence report.')],
       ['Explain this file', 'Ask VOX about the active file', () => void sendMessage('Explain the active file to me.')],
@@ -134,6 +138,12 @@ export function CommandPalette() {
     // projects
     projects.forEach((p) => add({ id: `proj_${p.id}`, label: p.name, hint: `${p.language} · ${p.framework}`, icon: 'FolderKanban', group: 'PROJECTS', run: () => openProject(p.id) }));
 
+    // workspaces
+    workspaces.forEach((w) => {
+      const proj = projects.find((p) => p.id === w.projectId);
+      add({ id: `ws_${w.id}`, label: w.name, hint: `RESTORE · ${proj?.name ?? 'unknown'} · ${w.tabs.length} files · ${w.terminals.length} terms`, icon: 'LayoutGrid', group: 'WORKSPACES', run: () => restoreWorkspace(w.id) });
+    });
+
     // github
     githubRepos.forEach((r) => add({ id: `gh_${r.full_name}`, label: r.full_name, hint: `★ ${r.stargazers_count} · ${r.language ?? '—'}`, icon: 'GitBranch', group: 'GITHUB', run: () => setSection('github') }));
 
@@ -149,7 +159,7 @@ export function CommandPalette() {
     settings.forEach(([label, run]) => add({ id: `set_${label}`, label, hint: 'SETTINGS', icon: 'Settings', group: 'SETTINGS', run }));
 
     return out.slice(0, 60);
-  }, [query, mode, projects, activeProjectId, githubRepos, section, windows, openApp, setSection, openProject, openFile, runHealthScan, buildProject, testProject, runDiagnostics, createBackup, exportAIConfig, syncGithub, sendMessage, setSettings, openAppVox]);
+  }, [query, mode, projects, activeProjectId, githubRepos, section, windows, openApp, setSection, openProject, openFile, runHealthScan, buildProject, testProject, runDiagnostics, createBackup, exportAIConfig, syncGithub, sendMessage, setSettings, openAppVox, workspaces, saveWorkspace, restoreWorkspace]);
 
   const groups = useMemo(() => {
     const g: string[] = [];

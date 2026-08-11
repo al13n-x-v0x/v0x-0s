@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useVox } from '../lib/store';
 import type { Project } from '../lib/types';
 import { Badge, Button, EmptyState, Field, Icon, Input, Modal, Panel, StatusDot } from '../components/ui';
-import { timeAgo, uid } from '../lib/fmt';
+import { fmtTime, timeAgo, uid } from '../lib/fmt';
 import { sfx } from '../lib/sounds';
 
 export function Projects() {
@@ -11,6 +11,8 @@ export function Projects() {
   const [name, setName] = useState('');
   const [lang, setLang] = useState('TypeScript');
   const [framework, setFramework] = useState('React');
+  const [wsOpen, setWsOpen] = useState(false);
+  const [wsName, setWsName] = useState('');
 
   const create = () => {
     if (!name.trim()) return;
@@ -53,6 +55,7 @@ export function Projects() {
         </div>
         <div className="flex gap-2">
           <Button variant="cyan" icon="Plus" onClick={() => setCreateOpen(true)}>NEW PROJECT</Button>
+          <Button variant="violet" icon="Save" onClick={() => { setWsName(''); setWsOpen(true); }}>SAVE WORKSPACE</Button>
           <Button icon="FolderGit2" onClick={() => s.setSection('github')}>CLONE REPOSITORY</Button>
         </div>
       </div>
@@ -66,6 +69,55 @@ export function Projects() {
           ))}
         </div>
       )}
+
+      <div className="pt-1">
+        <div className="flex items-end justify-between gap-3 mb-3">
+          <div>
+            <p className="hud-label mb-1">WORKSPACE MANAGER</p>
+            <h2 className="font-display text-[14px] font-semibold tracking-[0.05em] uppercase text-vox-text">SAVED SESSIONS — FILES · TERMINALS · AI CONTEXT</h2>
+          </div>
+          <span className="text-[10px] font-mono text-vox-dim">{s.workspaces.length} saved</span>
+        </div>
+        {s.workspaces.length === 0 ? (
+          <div className="glass hud-border rounded-xl p-4 flex items-center gap-3">
+            <Icon name="LayoutGrid" size={16} className="text-vox-dim" />
+            <p className="text-[11.5px] text-vox-muted">No saved workspaces. Save one to snapshot the active project's open files, terminal sessions, and AI conversation — restore it anytime with one click.</p>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {s.workspaces.map((w) => {
+              const proj = s.projects.find((p) => p.id === w.projectId);
+              return (
+                <div key={w.id} className="glass hud-border rounded-xl p-3.5 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <Icon name="LayoutGrid" size={13} className="text-cyan-300" />
+                    <span className="text-[12.5px] font-semibold text-vox-text truncate">{w.name}</span>
+                    <span className="ml-auto text-[9.5px] font-mono text-vox-dim">{fmtTime(w.time)}</span>
+                  </div>
+                  <p className="text-[10px] font-mono text-vox-muted">{proj?.name ?? 'unknown project'} · {w.tabs.length} file{w.tabs.length === 1 ? '' : 's'} · {w.terminals.length} term{w.terminals.length === 1 ? '' : 's'} · {w.aiMessages.length} AI msgs</p>
+                  <div className="flex gap-1.5 mt-auto">
+                    <Button size="xs" variant="cyan" icon="RotateCcw" onClick={() => s.restoreWorkspace(w.id)}>RESTORE</Button>
+                    <Button size="xs" variant="ghost" icon="Trash2" onClick={() => s.deleteWorkspace(w.id)}>DELETE</Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <Modal open={wsOpen} onClose={() => setWsOpen(false)} title="Save Workspace" icon="Save" width={420}>
+        <div className="space-y-3">
+          <Field label="Workspace Name">
+            <Input value={wsName} onChange={(e) => setWsName(e.target.value)} placeholder={s.projects.find((p) => p.id === s.activeProjectId)?.name ?? 'My Workspace'} autoFocus />
+          </Field>
+          <p className="text-[10.5px] text-vox-dim">Snapshots the active project, its open file tabs, terminal sessions, and the current AI conversation. Restoring returns everything exactly as it was.</p>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setWsOpen(false)}>CANCEL</Button>
+          <Button variant="solid" icon="Save" onClick={() => { s.saveWorkspace(wsName); setWsOpen(false); }}>SAVE</Button>
+        </div>
+      </Modal>
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Create New Project" icon="FolderPlus" width={460}>
         <div className="space-y-3.5">

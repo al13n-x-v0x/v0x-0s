@@ -1,0 +1,25 @@
+{
+  "name": "VOX-OS — A Dev's First Choice",
+  "short_name": "VOX-OS",
+  "description": "Futuristic developer operating environment — code, terminals, AI, and remote control.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05060a",
+  "theme_color": "#05060a",
+  "icons": [
+    {
+      "src": "/vox.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/vox.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

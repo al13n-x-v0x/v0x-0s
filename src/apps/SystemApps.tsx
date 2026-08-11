@@ -135,6 +135,7 @@ export function ErrorCenter() {
                 <Badge tone={e.severity === 'error' ? 'red' : 'amber'}>{e.source}</Badge>
                 <span className="text-[12.5px] font-semibold text-vox-text">{e.message}</span>
                 <span className="ml-auto font-mono text-[10px] text-vox-dim">{fmtTime(e.time)}</span>
+                {e.count && e.count > 1 && <Badge tone="cyan">×{e.count}</Badge>}
                 {e.resolved && <Badge tone="green">RESOLVED</Badge>}
               </div>
               {e.detail && <p className="text-[11.5px] text-vox-muted mt-1.5 font-mono">{e.detail}</p>}
@@ -382,15 +383,23 @@ export function Profile() {
       </div>
       <div className="grid md:grid-cols-2 gap-4">
         <Panel title="Workspaces" icon="LayoutGrid">
-          <div className="space-y-1.5">
-            {s.workspaces.map((w) => (
-              <div key={w} className="glass-inset px-3 py-2 flex items-center gap-2">
-                <Icon name="LayoutGrid" size={12} className="text-vox-dim" />
-                <span className="text-[12px] text-vox-text">{w}</span>
-                <Badge tone="dim" className="ml-auto">{s.projects.filter((p) => p.workspace === w).length} PROJECT(S)</Badge>
-              </div>
-            ))}
-          </div>
+          {s.workspaces.length === 0 ? (
+            <p className="text-[11.5px] text-vox-muted px-1">No saved workspaces yet — save one from the Projects page and its open files, terminals, and AI context come back instantly.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {s.workspaces.map((w) => {
+                const proj = s.projects.find((p) => p.id === w.projectId);
+                return (
+                  <div key={w.id} className="glass-inset px-3 py-2 flex items-center gap-2">
+                    <Icon name="LayoutGrid" size={12} className="text-cyan-300" />
+                    <span className="text-[12px] font-semibold text-vox-text">{w.name}</span>
+                    <span className="text-[10px] font-mono text-vox-dim">{proj?.name ?? 'unknown'} · {w.tabs.length} files · {w.terminals.length} term</span>
+                    <Button size="xs" variant="ghost" icon="RotateCcw" className="ml-auto" onClick={() => s.restoreWorkspace(w.id)}>RESTORE</Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Panel>
         <Panel title="Local profile" icon="UserRound" bodyClassName="!p-3.5">
           <p className="text-[11.5px] text-vox-muted leading-relaxed">Your developer profile is stored locally. No personal information is required — VOX-OS only tracks workspace and project activity. Profile data never leaves your machine.</p>
@@ -583,6 +592,13 @@ export function DesktopAgent() {
 
           <div className="grid md:grid-cols-2 gap-4 mt-4">
             <Panel title="Capabilities & permissions" icon="Blocks" bodyClassName="!p-3">
+              <div className="flex items-center justify-between gap-2 px-2.5 py-2 mb-1.5 rounded-lg bg-cyan-400/[0.04] border border-cyan-400/20">
+                <div>
+                  <p className="text-[11px] font-semibold text-cyan-300">TRUSTED MACHINE? UNLOCK EVERYTHING</p>
+                  <p className="text-[10px] text-vox-muted">Grant all capabilities at once — equivalent to starting the agent with <span className="font-mono">--allow-all</span>.</p>
+                </div>
+                <Button size="xs" variant="cyan" icon="Zap" onClick={() => void s.agentAllowAll()}>ALLOW ALL</Button>
+              </div>
               <div className="space-y-1.5">
                 {caps.map((c) => {
                   const state = agent.perms[c.id] ?? 'unknown';

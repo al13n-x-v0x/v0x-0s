@@ -3,10 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   AIMessage, AppError, AutomationRule, CommandHistoryItem, DesktopIcon, Extension, HealthCategory,
   HealthState, LogEvent, Notification, Profile, Project, ProviderConfig, ProviderId, RouterLogEntry,
-  SectionId, Settings, SystemInfo, TelemetryPoint, TerminalSession, VoiceState, WindowState, AIUsage,
+  SectionId, Settings, SystemInfo, TelemetryPoint, TerminalSession, VoiceState, WindowState, Workspace, AIUsage,
 } from './types';
 import { APP_VERSION, APPS, PROVIDERS } from './constants';
-import { SEED_PROJECTS, SEED_WORKSPACES } from '../data/projects';
+import { SEED_PROJECTS } from '../data/projects';
 import { SEED_EXTENSIONS, SEED_AUTOMATION } from '../data/system';
 import { runCommand, sessionPrompt } from './shell';
 import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
@@ -82,7 +82,7 @@ export interface VoxState {
   automation: AutomationRule[];
   memory: MemoryItem[];
   profile: Profile;
-  workspaces: string[];
+  workspaces: Workspace[];
   backups: BackupEntry[];
   // ---- ai ----
   providers: Record<ProviderId, ProviderConfig>;
@@ -173,6 +173,7 @@ export interface VoxState {
   connectAgent: (manualUrl?: string, manualToken?: string) => Promise<void>;
   disconnectAgent: () => void;
   agentRequestPermission: (perm: string) => Promise<void>;
+  agentAllowAll: () => Promise<void>;
   agentSessionInput: (sessionId: string, line: string) => void;
   wireAgent: (hello: AgentHello) => void;
   agentOpenSession: (sessionId: string) => Promise<void>;
@@ -202,6 +203,9 @@ export interface VoxState {
   setTheme: (t: Settings['theme']) => void;
   // projects
   openProject: (id: string) => void;
+  saveWorkspace: (name: string) => void;
+  restoreWorkspace: (id: string) => void;
+  deleteWorkspace: (id: string) => void;
   updateProject: (id: string, p: Partial<Project>) => void;
   buildProject: (id?: string) => Promise<void>;
   testProject: (id?: string) => Promise<void>;
@@ -459,7 +463,7 @@ export const useVox = create<VoxState>()(
         { id: uid('m'), section: 'ACTIONS', text: 'Ran full health scan — score 96/100.', time: now - 1000 * 60 * 30 },
       ],
       profile: PROFILE,
-      workspaces: SEED_WORKSPACES,
+      workspaces: [],
       backups: [],
       providers: defaultProviders(),
       modelsUnavailable: { gemini: false, groq: false },
@@ -638,11 +642,25 @@ export const useVox = create<VoxState>()(
       dismissNotif: (id) => set({ notifications: get().notifications.filter((n) => n.id !== id) }),
       clearNotifs: () => set({ notifications: [] }),
       logEvent: (source, text, severity = 'info') => {
-        set({ eventLog: [{ id: uid('l'), time: Date.now(), source, text, severity }, ...get().eventLog].slice(0, 200) });
+        // dedupe: identical consecutive events collapse into one (refreshes time) — keeps RAM low
+        const cur = get().eventLog;
+        if (cur[0]?.source === source && cur[0]?.text === text) {
+          set({ eventLog: [{ ...cur[0], time: Date.now() }, ...cur.slice(1)].slice(0, 150) });
+          return;
+        }
+        set({ eventLog: [{ id: uid('l'), time: Date.now(), source, text, severity }, ...cur].slice(0, 150) });
       },
       addError: (e) => {
-        const err: AppError = { ...e, id: uid('e'), time: Date.now(), resolved: false };
-        set({ errors: [err, ...get().errors].slice(0, 100) });
+        // dedupe: an identical unresolved error (same source+message) just bumps its time —
+        // repeated failures (e.g. provider 400s at boot) no longer flood RAM or the Error Center.
+        const now = Date.now();
+        const existing = get().errors.find((x) => !x.resolved && x.source === e.source && x.message === e.message);
+        if (existing) {
+          set({ errors: get().errors.map((x) => (x.id === existing.id ? { ...x, time: now, count: (x.count ?? 1) + 1 } : x)).slice(0, 60) });
+          return;
+        }
+        const err: AppError = { ...e, id: uid('e'), time: now, resolved: false, count: 1 };
+        set({ errors: [err, ...get().errors].slice(0, 60) });
         get().logEvent('ERROR', `${e.source}: ${e.message}`, 'error');
       },
       resolveError: (id) => set({ errors: get().errors.map((e) => (e.id === id ? { ...e, resolved: true } : e)) }),
@@ -662,6 +680,37 @@ export const useVox = create<VoxState>()(
       },
       setTheme: (t) => get().setSettings({ theme: t }),
 
+      // ================= WORKSPACES =================
+      saveWorkspace: (name) => {
+        const pid = get().activeProjectId;
+        const proj = get().projects.find((p) => p.id === pid);
+        const tabs = get().codeTabs[pid] ?? [];
+        const terminals = get().terminalSessions.map((t) => ({ ...t, agentSessionId: undefined, agentMode: false }));
+        const ws: Workspace = { id: uid('ws'), name: name.trim() || proj?.name || 'Untitled', time: Date.now(), projectId: pid, tabs, activeFile: get().activeFile, terminals, aiMessages: get().aiMessages.slice(-30) };
+        set({ workspaces: [ws, ...get().workspaces].slice(0, 20) });
+        get().logEvent('PROJECT', `Workspace "${ws.name}" saved (${proj?.name ?? 'unknown'})`, 'success');
+        get().pushNotification({ category: 'PROJECT', severity: 'success', title: 'WORKSPACE SAVED', body: `${ws.name} — ${tabs.length} file${tabs.length === 1 ? '' : 's'}, ${terminals.length} terminal${terminals.length === 1 ? '' : 's'}, AI context snapshot.` });
+      },
+      restoreWorkspace: (id) => {
+        const ws = get().workspaces.find((w) => w.id === id);
+        if (!ws) return;
+        const proj = get().projects.find((p) => p.id === ws.projectId);
+        if (!proj) return;
+        set({
+          activeProjectId: ws.projectId,
+          projects: get().projects.map((p) => (p.id === ws.projectId ? { ...p, lastOpened: Date.now() } : p)),
+          codeTabs: { ...get().codeTabs, [ws.projectId]: ws.tabs },
+          activeFile: ws.activeFile,
+          terminalSessions: ws.terminals,
+          terminalActive: ws.terminals[ws.terminals.length - 1]?.id ?? '',
+          aiMessages: ws.aiMessages,
+          section: 'dashboard',
+        });
+        get().logEvent('PROJECT', `Workspace "${ws.name}" restored (${proj.name})`, 'success');
+        get().pushNotification({ category: 'PROJECT', severity: 'success', title: 'WORKSPACE RESTORED', body: `${ws.name} — files, terminals, and AI context reloaded.` });
+        get().addMemory({ section: 'PROJECT', text: `Restored workspace: ${ws.name} on ${proj.name}.` });
+      },
+      deleteWorkspace: (id) => set({ workspaces: get().workspaces.filter((w) => w.id !== id) }),
       // ================= PROJECTS =================
       openProject: (id) => {
         const p = get().projects.find((pr) => pr.id === id);
@@ -1211,6 +1260,16 @@ export const useVox = create<VoxState>()(
           get().pushNotification({ category: 'SYSTEM', severity: ok ? 'success' : 'warning', title: 'AGENT PERMISSION', body: `${perm} ${ok ? 'GRANTED' : 'DENIED'} — check the agent console.` });
         } catch { /* agent offline */ }
       },
+      agentAllowAll: async () => {
+        try {
+          const perms = await agentClient.allowAll();
+          if (perms) {
+            set({ agentState: { ...get().agentState, perms } });
+            get().pushNotification({ category: 'SYSTEM', severity: 'success', title: 'AGENT UNLOCKED', body: 'All agent capabilities granted — the Desktop Agent can act on your behalf.' });
+            get().logEvent('SYSTEM', 'Desktop Agent: ALLOW ALL granted by user', 'success');
+          }
+        } catch { /* agent offline */ }
+      },
       agentSessionInput: (sessionId, line) => {
         const session = get().terminalSessions.find((t) => t.id === sessionId);
         if (!session?.agentSessionId) return;
@@ -1532,7 +1591,7 @@ export const useVox = create<VoxState>()(
       restoreBackup: (id) => {
         const b = get().backups.find((x) => x.id === id);
         if (!b) return;
-        const d = b.data as { settings?: Partial<Settings>; workspaces?: string[]; extensions?: { id: string; installed: boolean; enabled: boolean }[]; automation?: { id: string; enabled: boolean }[]; memory?: { section: MemoryItem['section']; text: string }[] };
+        const d = b.data as { settings?: Partial<Settings>; workspaces?: Workspace[]; extensions?: { id: string; installed: boolean; enabled: boolean }[]; automation?: { id: string; enabled: boolean }[]; memory?: { section: MemoryItem['section']; text: string }[] };
         if (d.settings) get().setSettings(d.settings);
         if (d.workspaces) set({ workspaces: d.workspaces });
         if (d.extensions) set({ extensions: get().extensions.map((e) => { const b = d.extensions!.find((x) => x.id === e.id); return b ? { ...e, installed: b.installed, enabled: b.enabled } : e; }) });
@@ -1574,8 +1633,15 @@ export const useVox = create<VoxState>()(
     }),
     {
       name: 'vox-os-state',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => localStorage),
+      // v4 stored `workspaces` as string[] (legacy labels); v5 uses full Workspace snapshots.
+      // Drop the old field shape so a schema bump never wipes saved settings/projects.
+      migrate: (persisted, version) => {
+        const p = persisted as Record<string, unknown> & { workspaces?: unknown };
+        if (version < 5 && Array.isArray(p.workspaces)) p.workspaces = [];
+        return p as never;
+      },
       partialize: (s) => ({
         settings: s.settings,
         projects: s.projects,

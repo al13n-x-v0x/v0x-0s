@@ -30,6 +30,7 @@ import { Gaming } from './apps/Gaming';
 import {
   VoxCoreApp, EventLog, ErrorCenter, Diagnostics, Memory, Backup, CommandHistory, Profile, TaskManager, SystemInfo, DesktopAgent,
 } from './apps/SystemApps';
+import { MobileRemote } from './apps/MobileRemote';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -61,6 +62,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   taskmanager: () => <TaskManager />,
   systeminfo: () => <SystemInfo />,
   agent: () => <DesktopAgent />,
+  remote: () => <MobileRemote />,
   history: () => <CommandHistory />,
   profile: () => <Profile />,
 };

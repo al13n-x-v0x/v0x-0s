@@ -199,6 +199,17 @@ wss.on('connection', (ws, req) => {
   ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
+    try {
+      await handleMessage(ws, msg);
+    } catch (e) {
+      // a single bad message must never take down the daemon
+      console.error('[VOX AGENT] handler error:', e instanceof Error ? e.message : e);
+      send(ws, { id: msg.id, ok: false, reason: 'internal error' });
+    }
+  });
+
+  // nested on purpose: `authed` and `ip` are closure state shared across messages
+  async function handleMessage(ws, msg) {
     if (!authed) {
       if (msg.type !== 'hello' || msg.token !== cfg.token) { ws.close(4003, 'bad token'); return; }
       authed = true;
@@ -221,6 +232,14 @@ wss.on('connection', (ws, req) => {
     if (msg.type === 'request_permission') {
       const r = await hasPermission(String(msg.perm || '').toUpperCase());
       send(ws, { id: msg.id, ok: r.ok, reason: r.reason, perm: msg.perm });
+      return;
+    }
+    if (msg.type === 'allow_all') {
+      // grant every capability at once (trusted-dev-machine consent; same as --allow-all)
+      for (const k of Object.keys(cfg.permissions)) cfg.permissions[k] = 'allowed';
+      saveConfig(cfg);
+      console.error('[VOX AGENT] allow_all granted by client');
+      send(ws, { id: msg.id, ok: true, perms: { ...cfg.permissions } });
       return;
     }
     // ---- processes ----
@@ -267,7 +286,7 @@ wss.on('connection', (ws, req) => {
       return send(ws, { id: msg.id, ok: true });
     }
     return send(ws, { id: msg.id, ok: false, reason: 'unknown message type' });
-  });
+  }
 
   ws.on('close', () => {
     subs.delete(ws);

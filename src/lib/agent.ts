@@ -147,6 +147,7 @@ class VoxAgentClient {
   subscribe(interval: number) { return this.request('subscribe', { interval }); }
   ping(): Promise<boolean> { return this.request('ping').then(() => true); }
   requestPermission(perm: string): Promise<boolean> { return this.request('request_permission', { perm }).then(() => true); }
+  allowAll(): Promise<Record<string, string> | null> { return this.request('allow_all').then((m) => (m && m.perms ? m.perms : null)); }
   processes(): Promise<AgentProcess[]> { return this.request('processes').then((m) => m.data ?? []); }
   // NOTE: session ids travel in a dedicated `sid` field so they never
   // collide with the request correlation `id` on the wire.

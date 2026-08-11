@@ -3,6 +3,7 @@ import { useVox } from '../lib/store';
 import { scanForSecrets } from '../lib/secrets';
 import { walk } from '../lib/vfs';
 import { Badge, Button, Icon, Panel, Select, StatusDot } from '../components/ui';
+import { SecurityToolkit } from './SecurityToolkit';
 
 export function SecurityCenter() {
   const s = useVox();
@@ -172,6 +173,8 @@ export function SecurityCenter() {
           )}
           <p className="text-[9.5px] text-vox-dim mt-2 font-mono">Never displays secret values. IGNORE only affects local findings.</p>
         </Panel>
+
+        <SecurityToolkit />
 
         <Panel title="Security Posture" icon="ShieldCheck" glow="cyan">
           <div className="space-y-2.5">
