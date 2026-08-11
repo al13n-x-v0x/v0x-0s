@@ -15,6 +15,7 @@ const CATS = [
   { id: 'github', label: 'GitHub', icon: 'Github' },
   { id: 'voice', label: 'Voice & Mic', icon: 'Mic' },
   { id: 'agent', label: 'Desktop Agent', icon: 'Bot' },
+  { id: 'gaming', label: 'Gaming & Boost', icon: 'Gamepad2' },
   { id: 'keys', label: 'Keyboard Shortcuts', icon: 'Keyboard' },
   { id: 'notifications', label: 'Notifications', icon: 'Bell' },
   { id: 'security', label: 'Security', icon: 'ShieldCheck' },
@@ -54,6 +55,7 @@ export function Settings() {
         {cat === 'github' && <GitHubCfg />}
         {cat === 'voice' && <VoiceCfg />}
         {cat === 'agent' && <AgentCfg />}
+        {cat === 'gaming' && <GamingCfg />}
         {cat === 'keys' && <KeysCfg />}
         {cat === 'notifications' && <NotifCfg />}
         {cat === 'security' && <SecurityCfg />}
@@ -263,6 +265,34 @@ function AgentCfg() {
         </Row>
       ))}
       <p className="text-[10.5px] text-vox-muted mt-3 leading-relaxed">The agent exposes controlled capabilities (SYSTEM_STATS, PROCESS_LIST, FILES, TERMINAL, GIT, VOICE) with explicit per-request permissions. No unrestricted remote shell is ever exposed.</p>
+    </div>
+  );
+}
+
+function GamingCfg() {
+  const s = useVox();
+  const os = s.os;
+  return (
+    <div className="max-w-[640px]">
+      <SectionTitle>Detected Platform</SectionTitle>
+      <Row label="Operating system" hint="Detected live from the browser. VOX-OS targets Windows, Linux, Android, BSD, Solaris and Web — macOS is not supported.">
+        <Badge tone={os.supported ? 'green' : 'red'}>{os.name}{os.arch !== 'unknown' ? ` · ${os.arch}` : ''}</Badge>
+      </Row>
+      <Row label="GPU (browser)" hint={s.gpu.renderer ? String(s.gpu.renderer) : 'Hidden by this browser — the Desktop Agent can report the real GPU.'}>
+        <Badge tone={s.gpu.renderer ? 'blue' : 'dim'}>{s.gpu.renderer ? 'DETECTED' : 'UNAVAILABLE'}</Badge>
+      </Row>
+      <SectionTitle>Boost</SectionTitle>
+      <Row label="Boost profile" hint="BOOST and ULTRA switch VOX-OS to performance mode and reduce background work. Real GPU/driver tuning requires the Desktop Agent.">
+        <select className="vox-input vox-select !w-40" value={s.settings.gameProfile} onChange={(e) => s.setGameProfile(e.target.value as 'balanced' | 'boost' | 'ultra')}>
+          <option value="balanced">BALANCED</option>
+          <option value="boost">BOOST</option>
+          <option value="ultra">ULTRA FPS</option>
+        </select>
+      </Row>
+      <Row label="Game Mode" hint="Suppresses non-critical notifications (errors and security alerts still come through) and focuses the shell on the active session.">
+        <Toggle checked={s.settings.gameMode} onChange={(v) => s.setGameMode(v)} />
+      </Row>
+      <p className="text-[10.5px] text-vox-muted mt-3 leading-relaxed">Compatibility checks (WebGL, memory, cores, network) are real browser capabilities. Roblox Player and OS-level driver control require the Desktop Agent — VOX-OS never claims them without it.</p>
     </div>
   );
 }

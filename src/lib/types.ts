@@ -18,6 +18,7 @@ export type SectionId =
   | 'devtools'
   | 'apimanager'
   | 'automation'
+  | 'gaming'
   | 'extensions'
   | 'marketplace'
   | 'settings'
@@ -220,6 +221,9 @@ export interface Settings {
   defaultShell: 'powershell' | 'bash' | 'cmd';
   // performance
   performanceMode: 'balanced' | 'performance';
+  // gaming
+  gameProfile: 'balanced' | 'boost' | 'ultra';
+  gameMode: boolean;
   // notifications
   notifyBuild: boolean;
   notifyGitHub: boolean;

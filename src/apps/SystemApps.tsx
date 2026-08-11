@@ -468,8 +468,9 @@ export function TaskManager() {
 export function SystemInfo() {
   const s = useVox();
   const info = s.systemInfo;
+  const os = s.os;
   const rows: [string, string, string][] = [
-    ['Operating System', info.os, 'BROWSER'],
+    ['Operating System', `${os.name}${os.version && !os.name.includes(os.version) ? ` · ${os.version}` : ''}`, 'BROWSER'],
     ['Architecture', info.arch, 'BROWSER'],
     ['CPU', info.cpu, info.cores ? 'BROWSER' : 'UNAVAILABLE'],
     ['GPU', info.gpu, 'UNAVAILABLE'],

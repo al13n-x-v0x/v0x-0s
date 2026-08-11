@@ -26,6 +26,7 @@ import { Automation } from './apps/Automation';
 import { Extensions } from './apps/Extensions';
 import { Settings } from './apps/Settings';
 import { VoiceEngine } from './apps/VoiceEngine';
+import { Gaming } from './apps/Gaming';
 import {
   VoxCoreApp, EventLog, ErrorCenter, Diagnostics, Memory, Backup, CommandHistory, Profile, TaskManager, SystemInfo, DesktopAgent,
 } from './apps/SystemApps';
@@ -44,6 +45,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   devtools: () => <DevTools />,
   apimanager: () => <ApiManager />,
   automation: () => <Automation />,
+  gaming: () => <Gaming />,
   extensions: () => <Extensions />,
   marketplace: () => <Extensions marketplace />,
   settings: () => <Settings />,

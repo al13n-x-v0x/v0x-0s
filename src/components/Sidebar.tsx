@@ -11,6 +11,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
   const health = useVox((s) => s.health);
   const profile = useVox((s) => s.profile);
   const backend = useVox((s) => s.backend);
+  const os = useVox((s) => s.os);
   const telemetry = useVox((s) => s.telemetry);
   const last = telemetry[telemetry.length - 1];
 
@@ -60,6 +61,10 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
             <div className="mt-1.5 flex items-center gap-1.5">
               <span className="dot dot-online" />
               <span className="text-[9.5px] font-mono tracking-[0.14em] text-emerald-300">SYSTEM ONLINE</span>
+            </div>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <Icon name="Monitor" size={11} className="text-vox-dim" />
+              <span className="text-[8.5px] font-mono tracking-[0.1em] text-vox-dim truncate">{os.name}{os.arch !== 'unknown' ? ` · ${os.arch.toUpperCase()}` : ''}</span>
             </div>
             <div className="mt-2.5 space-y-1.5">
               <div>

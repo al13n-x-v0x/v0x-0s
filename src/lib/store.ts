@@ -11,6 +11,7 @@ import { SEED_EXTENSIONS, SEED_AUTOMATION } from '../data/system';
 import { runCommand, sessionPrompt } from './shell';
 import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
+import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
 import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
@@ -100,6 +101,9 @@ export interface VoxState {
   telemetry: TelemetryPoint[];
   telemetryReal: { ram: boolean; net: boolean };
   systemInfo: SystemInfo;
+  os: OSInfo;
+  roblox: RobloxCompat;
+  gpu: GPUInfo;
   // ---- github ----
   githubRepos: GithubRepo[];
   githubLoading: boolean;
@@ -121,6 +125,8 @@ export interface VoxState {
   setSafeMode: (v: boolean) => void;
   setRecovery: (v: boolean) => void;
   resetUI: () => void;
+  setGameProfile: (p: 'balanced' | 'boost' | 'ultra') => void;
+  setGameMode: (on: boolean) => void;
   // windows
   openApp: (appId: string) => void;
   closeWindow: (id: string) => void;
@@ -236,6 +242,8 @@ const DEFAULT_SETTINGS: Settings = {
   systemPrompt: 'You are VOX, the assistant built into the VOX-OS developer operating environment. Be concise and technical. When you perform an action in the system, say so in one short sentence. Never invent system data — if you lack telemetry, say so.',
   defaultShell: 'powershell',
   performanceMode: 'balanced',
+  gameProfile: 'balanced',
+  gameMode: false,
   notifyBuild: true,
   notifyGitHub: true,
   notifyAI: true,
@@ -305,9 +313,12 @@ function seedNotifs(): Notification[] {
   ];
 }
 
+const initialOS = detectOS();
+const initialRoblox = detectRobloxCompat();
+const initialGPU = detectGPU();
 const initialSystemInfo: SystemInfo = {
   agent: 'disconnected',
-  os: 'Detecting…',
+  os: initialOS.name,
   arch: 'unknown',
   cpu: 'Detecting…',
   cores: null,
@@ -410,6 +421,9 @@ export const useVox = create<VoxState>()(
       telemetry: [],
       telemetryReal: { ram: false, net: false },
       systemInfo: initialSystemInfo,
+      os: initialOS,
+      roblox: initialRoblox,
+      gpu: initialGPU,
       githubRepos: [],
       githubLoading: false,
       githubError: null,
@@ -449,6 +463,20 @@ export const useVox = create<VoxState>()(
       setContextMenu: (m) => set({ contextMenu: m }),
       setSafeMode: (v) => set({ safeMode: v }),
       setRecovery: (v) => set({ recovery: v }),
+      setGameProfile: (p) => {
+        set({ settings: { ...get().settings, gameProfile: p, performanceMode: p === 'balanced' ? 'balanced' : 'performance' } });
+        get().logEvent('SYSTEM', `GAME BOOST profile → ${p.toUpperCase()}`, 'info');
+        get().pushNotification({ category: 'SYSTEM', severity: 'success', title: 'BOOST PROFILE ACTIVE', body: `${p.toUpperCase()} profile applied${p === 'ultra' ? ' — max performance' : p === 'boost' ? ' — performance boost' : ' — balanced power'}. VOX-OS prioritizes the active session.` });
+      },
+      setGameMode: (on) => {
+        set({ settings: { ...get().settings, gameMode: on } });
+        if (on) {
+          get().logEvent('SYSTEM', 'GAME MODE ON — notifications suppressed, boost applied', 'info');
+          get().pushNotification({ category: 'SYSTEM', severity: 'success', title: 'GAME MODE ON', body: 'Non-critical notifications suppressed. VOX-OS focuses on the running session.' });
+        } else {
+          get().logEvent('SYSTEM', 'GAME MODE OFF', 'info');
+        }
+      },
       resetUI: () => {
         set({
           windows: [], activeWindowId: null, paletteOpen: false, startOpen: false, notifOpen: false, quickOpen: false,
@@ -522,6 +550,8 @@ export const useVox = create<VoxState>()(
       // ================= NOTIFICATIONS / LOGS =================
       pushNotification: (n) => {
         const s = get().settings;
+        // GAME MODE: only errors and security alerts break through.
+        if (s.gameMode && !['error'].includes(n.severity) && n.category !== 'SECURITY') return;
         const enabled =
           (n.category === 'BUILD' && s.notifyBuild) ||
           (n.category === 'GITHUB' && s.notifyGitHub) ||
@@ -1109,13 +1139,18 @@ export const useVox = create<VoxState>()(
       refreshSystem: async () => {
         const probe = systemProbe();
         const battery = await batteryProbe();
-        const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+        const os = detectOS();
+        const gpu = detectGPU();
+        const roblox = detectRobloxCompat();
         set({
+          os, gpu, roblox,
           systemInfo: {
             ...get().systemInfo,
             ...probe,
+            os: os.name,
+            arch: os.arch,
             cpu: `${probe.cores ?? '?'} logical cores (browser)`,
-            gpu: 'Requires Desktop Agent',
+            gpu: gpu.renderer ? `${gpu.renderer} (browser)` : 'Hidden by browser — requires Desktop Agent',
             hostname: 'vox-host',
             kernel: 'vox-shell · browser sandbox',
             uptime: `${Math.floor(performance.now() / 60000)}m session`,
