@@ -87,6 +87,16 @@ body {
   }
 }
 
+/* ---- Phone home edit mode --------------------------------------------- */
+@keyframes voxWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1.1deg); }
+  75% { transform: rotate(1.1deg); }
+}
+.vox-wiggle {
+  animation: voxWiggle 0.5s ease-in-out infinite;
+}
+
 /* ---- Phone polish -----------------------------------------------------
    Softer radii and roomier tap targets for a native-app feel. */
 @media (max-width: 640px) {

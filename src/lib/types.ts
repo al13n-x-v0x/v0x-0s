@@ -236,6 +236,8 @@ export interface Settings {
   systemPrompt: string;
   // terminal
   defaultShell: 'powershell' | 'bash' | 'cmd';
+  // phone home
+  phoneQuick: string[];
   // performance
   performanceMode: 'balanced' | 'performance';
   // gaming

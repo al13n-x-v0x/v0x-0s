@@ -293,6 +293,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoSave: true,
   showSimulatedLabels: true,
   demoAssistant: true,
+  phoneQuick: ['voxai', 'terminal', 'github', 'recon', 'remote', 'settings'],
   voiceEnabled: true,
   voiceAutoSpeak: false,
   voiceSpeed: 1,
@@ -1703,13 +1704,20 @@ export const useVox = create<VoxState>()(
     }),
     {
       name: 'vox-os-state',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => localStorage),
       // v4 stored `workspaces` as string[] (legacy labels); v5 uses full Workspace snapshots.
-      // Drop the old field shape so a schema bump never wipes saved settings/projects.
+      // v6 adds the phone-home quick-action order. Shallow merges drop missing
+      // fields, so backfill defaults here — never wipe saved settings/projects.
       migrate: (persisted, version) => {
-        const p = persisted as Record<string, unknown> & { workspaces?: unknown };
+        const p = persisted as Record<string, unknown> & { workspaces?: unknown; settings?: Record<string, unknown> };
         if (version < 5 && Array.isArray(p.workspaces)) p.workspaces = [];
+        if (version < 6) {
+          const settings = (p.settings ?? {}) as Record<string, unknown>;
+          if (!Array.isArray(settings.phoneQuick)) {
+            settings.phoneQuick = ['voxai', 'terminal', 'github', 'recon', 'remote', 'settings'];
+          }
+        }
         return p as never;
       },
       partialize: (s) => ({
