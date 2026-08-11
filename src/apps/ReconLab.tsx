@@ -115,6 +115,11 @@ export function ReconLab() {
   const [crackOut, setCrackOut] = useState('');
   const [crackBusy, setCrackBusy] = useState(false);
 
+  // practice lab
+  const [labIp, setLabIp] = useState('192.168.56.101');
+  const [labOut, setLabOut] = useState('');
+  const [labErr, setLabErr] = useState(false);
+
   const runAgent = async (key: string, cmd: string) => {
     if (!connected) return;
     setBusy(key);
@@ -190,6 +195,36 @@ export function ReconLab() {
     setCrackOut(found ? `CRACKED → "${found}"` : 'NOT FOUND — not in the bundled wordlist (try a longer/stronger hash or a real hashcat/John session).');
   };
 
+  const LAB_PORTS = '21,22,23,25,53,80,111,139,445,512,513,514,1099,1524,2121,3306,5432,5900,6000,6667,8009,8180';
+
+  const doLabCheck = async () => {
+    const ip = labIp.trim();
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { setLabOut('Enter a valid IPv4, e.g. 192.168.56.101'); setLabErr(true); return; }
+    setLabErr(false);
+    setLabOut('');
+    const r = await runAgent('lab', `$p=New-Object Net.NetworkInformation.Ping; if($p.Send('${ip}',800).Status -eq 'Success'){ 'TARGET UP' } else { 'TARGET UNREACHABLE' }`);
+    setLabOut(r?.output ?? '');
+    setLabErr(!r?.ok);
+  };
+
+  const doLabRecon = async () => {
+    const ip = labIp.trim();
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { setLabOut('Enter a valid IPv4, e.g. 192.168.56.101'); setLabErr(true); return; }
+    setLabErr(false);
+    setLabOut('Running full recon chain against your lab target…');
+    // 1) ping check
+    const ping = await runAgent('lab', `$p=New-Object Net.NetworkInformation.Ping; if($p.Send('${ip}',800).Status -eq 'Success'){ '1) TARGET UP' } else { '1) TARGET UNREACHABLE' }`);
+    // 2) port scan of the classic lab service list
+    const ports = LAB_PORTS.split(',').map((p) => p.trim()).join(',');
+    const scan = await runAgent('lab', `$h='${ip}'; $ports=@(${ports}); foreach($p in $ports){ $c=New-Object Net.Sockets.TcpClient; try{ $t=$c.ConnectAsync($h,$p); if($t.Wait(400) -and $c.Connected){ \"2) PORT $p OPEN\" } } finally { $c.Close() } }; 'scan done'`);
+    // 3) ARP to identify the lab VM's MAC
+    const arp = await runAgent('lab', `arp -a | Select-String '${ip.split('.').slice(0, 3).join('.')}'`);
+    // display filter: keep only the meaningful result lines (drops command echoes)
+    const clean = (o?: string) => (o ?? '').split(/\r?\n/).filter((l) => /^1\) |^2\) PORT|scan done|Internet Address|dynamic|static/.test(l)).join('\n');
+    setLabOut([clean(ping?.output), clean(scan?.output), clean(arp?.output)].filter(Boolean).join('\n'));
+    setLabErr(!ping?.ok || !scan?.ok);
+  };
+
   const agentBadge = <Badge tone={connected ? 'green' : 'dim'}>{connected ? `AGENT: ${s.agentState.os?.hostname ?? 'LINKED'}` : 'AGENT OFFLINE'}</Badge>;
 
   return (
@@ -242,6 +277,17 @@ export function ReconLab() {
           <Output text={arpOut} error={arpErr} busy={busy === 'arp'} />
         </ToolPanel>
       </div>
+
+      <ToolPanel title="Practice Lab" icon="FlaskConical" glow="violet" right={<StatusDot tone={connected ? 'online' : 'dim'} pulse={busy === 'lab'} />}>
+        <div className="flex gap-2 flex-wrap items-center">
+          <Input value={labIp} onChange={(e) => setLabIp(e.target.value)} placeholder="192.168.56.101" className="font-mono w-40" />
+          <Button size="sm" variant="cyan" icon="Wifi" disabled={!connected || busy !== null} onClick={() => void doLabCheck()}>CHECK TARGET</Button>
+          <Button size="sm" variant="violet" icon="Radar" disabled={!connected || busy !== null} onClick={() => void doLabRecon()}>FULL RECON</Button>
+          <a href="/HACKING-LAB.md" className="text-[10px] font-mono text-violet-300 hover:text-violet-200 underline underline-offset-2" target="_blank" rel="noreferrer">open the lab guide →</a>
+        </div>
+        <p className="text-[9.5px] text-vox-dim mt-2 font-mono">Your own DVWA / Metasploitable VMs only · defaults to the Metasploitable host-only IP · FULL RECON = ping + classic service port scan + ARP identify</p>
+        <Output text={labOut} error={labErr} busy={busy === 'lab'} />
+      </ToolPanel>
 
       <div className="grid md:grid-cols-2 gap-4">
         <ToolPanel title="Subdomain Recon" icon="Globe" glow="cyan">

@@ -241,6 +241,12 @@ You don't kiosk a phone — you just **tap the VOX-OS icon**. That's the whole p
 
 **Want to go deeper?** The Terminal is a full shell — install `nmap`, `masscan`, `ffuf`, `hashcat`, `sqlmap` and run them on your own targets. That's how real security engineers train.
 
+### 🧪 Build a legal hacking lab
+
+Set up your own **DVWA + Metasploitable playground** and drive it straight from Recon Lab's **Practice Lab** panel (ping check + classic service port scan + ARP identify in one click). Full step-by-step guide with VirtualBox host-only isolation, Docker one-liner, OWASP Top 10 mapping, and free level-up resources:
+
+**→ [`HACKING-LAB.md`](HACKING-LAB.md)**
+
 ---
 
 ## 🛠️ Development & Scripts
