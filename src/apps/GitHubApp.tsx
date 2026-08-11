@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useVox } from '../lib/store';
 import type { GithubRepo } from '../lib/store';
-import { Badge, Button, EmptyState, ErrorState, Icon, Input, Panel, StatusDot } from '../components/ui';
+import { Badge, Button, EmptyState, ErrorState, Icon, Input, Loading, Panel, Select, StatusDot, Tabs } from '../components/ui';
 import { timeAgo } from '../lib/fmt';
+import type { GithubBranch, GithubCommit, GithubIssue, GithubPull } from '../lib/ai';
 
 export function GitHubApp() {
   const s = useVox();
   const connected = s.settings.githubConnected;
+  const detail = s.githubDetail;
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -97,6 +99,21 @@ export function GitHubApp() {
             </div>
           )}
         </Panel>
+      ) : detail.repo ? (
+        <RepoDetail
+          repo={detail.repo}
+          tab={detail.tab}
+          loading={detail.loading}
+          error={detail.error}
+          branch={detail.branch}
+          branches={detail.branches}
+          commits={detail.commits}
+          issues={detail.issues}
+          pulls={detail.pulls}
+          onTab={(t) => s.setGithubTab(t)}
+          onBranch={(b) => s.setGithubBranch(b)}
+          onBack={() => s.closeGithubRepo()}
+        />
       ) : s.githubLoading ? (
         <Panel title="Repositories" icon="GitBranch"><div className="py-12 text-center font-mono text-[11px] tracking-[0.2em] text-vox-muted">LOADING REPOSITORIES…</div></Panel>
       ) : s.githubRepos.length === 0 ? (
@@ -112,12 +129,12 @@ export function GitHubApp() {
         </>
       )}
 
-      {connected && s.githubRepos.length > 0 && (
+      {connected && s.githubRepos.length > 0 && !detail.repo && (
         <Panel title="Account Activity" icon="Activity" bodyClassName="!p-3">
           <div className="flex flex-wrap gap-3 text-[11px]">
             <div className="glass-inset px-3 py-2"><span className="hud-label block mb-1">REPOSITORIES</span><span className="font-mono text-[15px] text-vox-text">{s.githubRepos.length}</span></div>
             <div className="glass-inset px-3 py-2"><span className="hud-label block mb-1">LAST SYNC</span><span className="font-mono text-[12px] text-vox-text">{timeAgo(Date.now())}</span></div>
-            <div className="glass-inset px-3 py-2 flex-1 min-w-[220px]"><span className="hud-label block mb-1">NOTE</span><span className="text-vox-muted">Branches, commits, issues and actions render from repository data on demand.</span></div>
+            <div className="glass-inset px-3 py-2 flex-1 min-w-[220px]"><span className="hud-label block mb-1">NOTE</span><span className="text-vox-muted">Select a repository below to browse its real branches, commits, issues, and pull requests.</span></div>
           </div>
         </Panel>
       )}
@@ -140,19 +157,137 @@ function RepoCard({ r }: { r: GithubRepo }) {
             <span className="ml-auto">{r.pushed_at ? timeAgo(new Date(r.pushed_at).getTime()) : '—'}</span>
           </div>
           <div className="flex items-center gap-1.5 mt-2">
-            <Badge tone="green">main · clean</Badge>
+            <Badge tone="green">{r.default_branch} · default</Badge>
           </div>
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5 mt-3.5">
         <Button size="xs" variant="cyan" icon="ExternalLink" onClick={() => window.open(`https://github.com/${r.full_name}`, '_blank')}>VIEW</Button>
-        <Button size="xs" icon="GitBranch" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'BRANCHES', body: `Branch listing for ${r.full_name} requires the backend GitHub adapter.` })}>BRANCH</Button>
-        <Button size="xs" icon="GitCommitHorizontal" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'COMMITS', body: `Commit history for ${r.full_name} loads from the GitHub API on demand.` })}>COMMITS</Button>
-        <Button size="xs" icon="CircleDot" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'ISSUES', body: `Issue list for ${r.full_name} loads from the GitHub API on demand.` })}>ISSUES</Button>
-        <Button size="xs" variant="ghost" icon="GitPullRequest" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'PULL REQUESTS', body: `PRs for ${r.full_name} load from the GitHub API on demand.` })}>PR</Button>
+        <Button size="xs" icon="GitBranch" onClick={() => void s.openGithubRepo(r.full_name, 'branches')}>BRANCHES</Button>
+        <Button size="xs" icon="GitCommitHorizontal" onClick={() => void s.openGithubRepo(r.full_name, 'commits')}>COMMITS</Button>
+        <Button size="xs" icon="CircleDot" onClick={() => void s.openGithubRepo(r.full_name, 'issues')}>ISSUES</Button>
+        <Button size="xs" variant="ghost" icon="GitPullRequest" onClick={() => void s.openGithubRepo(r.full_name, 'pulls')}>PRS</Button>
         <Button size="xs" variant="ghost" icon="SearchCheck" onClick={() => { s.setSection('security'); void s.scanGithubRepo(r.full_name); }}>SCAN SECRETS</Button>
         <Button size="xs" variant="ghost" icon="Download" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'CLONE', body: `Cloning requires the Desktop Agent to write to disk.` })}>CLONE</Button>
       </div>
+    </div>
+  );
+}
+
+function RepoDetail(props: {
+  repo: string;
+  tab: 'branches' | 'commits' | 'issues' | 'pulls';
+  loading: boolean;
+  error: string | null;
+  branch: string;
+  branches: GithubBranch[];
+  commits: GithubCommit[];
+  issues: GithubIssue[];
+  pulls: GithubPull[];
+  onTab: (t: 'branches' | 'commits' | 'issues' | 'pulls') => void;
+  onBranch: (b: string) => void;
+  onBack: () => void;
+}) {
+  const { repo, tab, loading, error, branch, branches, commits, issues, pulls, onTab, onBranch, onBack } = props;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button size="xs" variant="ghost" icon="ArrowLeft" onClick={onBack}>ALL REPOS</Button>
+        <h2 className="font-mono text-[15px] font-semibold text-vox-text truncate">{repo}</h2>
+        <span className="ml-auto flex items-center gap-2">
+          {tab === 'commits' && branches.length > 0 && (
+            <Select value={branch} onChange={(e) => onBranch(e.target.value)} className="!text-[10.5px] font-mono !py-1.5">
+              {branches.map((b) => <option key={b.name} value={b.name}>{b.name}</option>)}
+            </Select>
+          )}
+          <Badge tone="cyan">LIVE</Badge>
+        </span>
+      </div>
+
+      <Tabs<'branches' | 'commits' | 'issues' | 'pulls'>
+        tabs={[
+          { id: 'branches', label: 'BRANCHES', icon: 'GitBranch' },
+          { id: 'commits', label: 'COMMITS', icon: 'GitCommitHorizontal' },
+          { id: 'issues', label: 'ISSUES', icon: 'CircleDot' },
+          { id: 'pulls', label: 'PULL REQUESTS', icon: 'GitPullRequest' },
+        ]}
+        active={tab}
+        onChange={onTab}
+      />
+
+      {loading ? (
+        <Panel><Loading label={`LOADING ${tab.toUpperCase()}…`} /></Panel>
+      ) : error ? (
+        <Panel>
+          <ErrorState title="LOAD FAILED" body={error} onRetry={() => { if (tab === 'commits') onBranch(branch); else onTab(tab); }} />
+        </Panel>
+      ) : tab === 'branches' ? (
+        <Panel title={`Branches (${branches.length})`} icon="GitBranch" bodyClassName="!p-0">
+          {branches.length === 0 ? <EmptyState icon="GitBranch" title="NO BRANCHES" body="No branches returned — check the token's repo read scope." /> : (
+            <div className="divide-y divide-white/[0.04]">
+              {branches.map((b) => (
+                <div key={b.name} className="flex items-center gap-3 px-3.5 py-2.5">
+                  <Icon name="GitBranch" size={13} className="text-vox-dim shrink-0" />
+                  <span className="font-mono text-[12px] text-vox-text truncate">{b.name}</span>
+                  {b.protected && <Badge tone="violet">PROTECTED</Badge>}
+                  <span className="ml-auto font-mono text-[10px] text-vox-dim">{b.sha.slice(0, 7)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      ) : tab === 'commits' ? (
+        <Panel title={`Commits${branch ? ` · ${branch}` : ''} (${commits.length})`} icon="GitCommitHorizontal" bodyClassName="!p-0">
+          {commits.length === 0 ? <EmptyState icon="GitCommitHorizontal" title="NO COMMITS" body="No commits on this branch, or the token cannot read them." /> : (
+            <div className="divide-y divide-white/[0.04] max-h-[440px] overflow-y-auto">
+              {commits.map((c) => (
+                <div key={c.sha} className="flex items-start gap-3 px-3.5 py-2.5">
+                  <span className="w-6 h-6 rounded-full bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-cyan-300 shrink-0 mt-0.5"><Icon name="GitCommitHorizontal" size={12} /></span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[12px] text-vox-text truncate">{c.message}</p>
+                    <p className="text-[10px] text-vox-muted mt-0.5 font-mono">{c.author} · {c.date ? timeAgo(new Date(c.date).getTime()) : '—'}</p>
+                  </div>
+                  <span className="font-mono text-[10px] text-vox-dim">{c.sha.slice(0, 7)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      ) : tab === 'issues' ? (
+        <Panel title={`Open issues (${issues.length})`} icon="CircleDot" bodyClassName="!p-0">
+          {issues.length === 0 ? <EmptyState icon="CircleDot" title="NO OPEN ISSUES" body="The issue tracker is clear — or the token cannot read issues." /> : (
+            <div className="divide-y divide-white/[0.04] max-h-[440px] overflow-y-auto">
+              {issues.map((i) => (
+                <div key={i.number} className="flex items-start gap-3 px-3.5 py-2.5">
+                  <Icon name="CircleDot" size={13} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[12px] text-vox-text truncate">{i.title}</p>
+                    <p className="text-[10px] text-vox-muted mt-0.5 font-mono">#{i.number} · opened by {i.user} · {timeAgo(new Date(i.created_at).getTime())}</p>
+                  </div>
+                  <span className="text-[10px] text-vox-dim font-mono shrink-0">{i.comments > 0 ? `${i.comments} 💬` : ''}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      ) : (
+        <Panel title={`Open pull requests (${pulls.length})`} icon="GitPullRequest" bodyClassName="!p-0">
+          {pulls.length === 0 ? <EmptyState icon="GitPullRequest" title="NO OPEN PRS" body="No open pull requests — or the token cannot read them." /> : (
+            <div className="divide-y divide-white/[0.04] max-h-[440px] overflow-y-auto">
+              {pulls.map((p) => (
+                <div key={p.number} className="flex items-start gap-3 px-3.5 py-2.5">
+                  <Icon name="GitPullRequest" size={13} className="text-violet-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-mono text-[12px] text-vox-text truncate">{p.title}</p>
+                    <p className="text-[10px] text-vox-muted mt-0.5 font-mono">#{p.number} · {p.head} → {p.base} · by {p.user} · {timeAgo(new Date(p.created_at).getTime())}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+      <p className="text-[9.5px] text-vox-dim font-mono">Live from the GitHub API via the VOX backend. Click a repo's BRANCHES / COMMITS / ISSUES / PRS to reload.</p>
     </div>
   );
 }

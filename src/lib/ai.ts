@@ -221,6 +221,64 @@ export async function fetchGithubRepos(): Promise<{ repos: { name: string; full_
   }
 }
 
+export interface GithubBranch { name: string; sha: string; protected: boolean }
+export interface GithubCommit { sha: string; message: string; author: string; date: string; url: string }
+export interface GithubIssue { number: number; title: string; state: string; user: string; created_at: string; comments: number; url: string }
+export interface GithubPull { number: number; title: string; state: string; user: string; created_at: string; head: string; base: string; url: string }
+
+export interface GithubDetailResult<T> {
+  ok: boolean;
+  repo: string;
+  data: T[];
+  error?: string;
+}
+
+export async function fetchGithubBranches(repo: string): Promise<GithubDetailResult<GithubBranch>> {
+  try {
+    const res = await fetch(`${BASE}/github/branches?repo=${encodeURIComponent(repo)}`);
+    const data = await res.json();
+    if (!res.ok) return { ok: false, repo, data: [], error: data.error ?? `HTTP ${res.status}` };
+    return { ok: true, repo, data: data.data ?? [] };
+  } catch {
+    return { ok: false, repo, data: [], error: 'Backend unreachable — start the VOX server.' };
+  }
+}
+
+export async function fetchGithubCommits(repo: string, branch?: string): Promise<GithubDetailResult<GithubCommit>> {
+  try {
+    const q = new URLSearchParams({ repo });
+    if (branch) q.set('branch', branch);
+    const res = await fetch(`${BASE}/github/commits?${q}`);
+    const data = await res.json();
+    if (!res.ok) return { ok: false, repo, data: [], error: data.error ?? `HTTP ${res.status}` };
+    return { ok: true, repo, data: data.data ?? [] };
+  } catch {
+    return { ok: false, repo, data: [], error: 'Backend unreachable — start the VOX server.' };
+  }
+}
+
+export async function fetchGithubIssues(repo: string): Promise<GithubDetailResult<GithubIssue>> {
+  try {
+    const res = await fetch(`${BASE}/github/issues?repo=${encodeURIComponent(repo)}`);
+    const data = await res.json();
+    if (!res.ok) return { ok: false, repo, data: [], error: data.error ?? `HTTP ${res.status}` };
+    return { ok: true, repo, data: data.data ?? [] };
+  } catch {
+    return { ok: false, repo, data: [], error: 'Backend unreachable — start the VOX server.' };
+  }
+}
+
+export async function fetchGithubPulls(repo: string): Promise<GithubDetailResult<GithubPull>> {
+  try {
+    const res = await fetch(`${BASE}/github/pulls?repo=${encodeURIComponent(repo)}`);
+    const data = await res.json();
+    if (!res.ok) return { ok: false, repo, data: [], error: data.error ?? `HTTP ${res.status}` };
+    return { ok: true, repo, data: data.data ?? [] };
+  } catch {
+    return { ok: false, repo, data: [], error: 'Backend unreachable — start the VOX server.' };
+  }
+}
+
 export interface GithubSecretFinding {
   path: string;
   line: number;

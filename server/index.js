@@ -414,6 +414,63 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ---- GitHub repo detail endpoints (branches / commits / issues / pulls) ----
+  const ghDetail = async (apiPath, mapFn) => {
+    const token = getGithubToken();
+    if (!token) return json(502, { error: 'GitHub requires a token — configure it in API Manager or set GITHUB_TOKEN in server/.env. The frontend never holds credentials.' });
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return json(400, { error: 'Provide a repo as owner/name, e.g. ?repo=octocat/hello-world', category: 'CONFIGURATION ERROR' });
+    try {
+      const res = await fetch(`https://api.github.com${apiPath}`, { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os', Accept: 'application/vnd.github+json' } });
+      if (res.status === 404) return json(404, { error: `Repo ${repo} not found, or the token cannot see it.` });
+      if (!res.ok) return json(502, { error: `GitHub API error (HTTP ${res.status})` });
+      const data = await res.json();
+      return json(200, { ok: true, repo, data: data.map(mapFn) });
+    } catch {
+      return json(502, { error: 'GitHub request failed — network error.' });
+    }
+  };
+  if (method === 'GET' && pathname === '/api/github/branches') {
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    return ghDetail(`/repos/${repo}/branches?per_page=50`, (b) => ({ name: b.name, sha: b.commit?.sha ?? '', protected: !!b.protected }));
+  }
+  if (method === 'GET' && pathname === '/api/github/commits') {
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    const branch = String(url.searchParams.get('branch') || '').trim();
+    return ghDetail(`/repos/${repo}/commits?per_page=25${branch ? `&sha=${encodeURIComponent(branch)}` : ''}`, (c) => ({
+      sha: c.sha ?? '',
+      message: (c.commit?.message ?? '').split('\n')[0],
+      author: c.commit?.author?.name ?? c.author?.login ?? 'unknown',
+      date: c.commit?.author?.date ?? '',
+      url: c.html_url ?? '',
+    }));
+  }
+  if (method === 'GET' && pathname === '/api/github/issues') {
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    return ghDetail(`/repos/${repo}/issues?state=open&per_page=25`, (i) => ({
+      number: i.number,
+      title: i.title ?? '',
+      state: i.state ?? '',
+      user: i.user?.login ?? 'unknown',
+      created_at: i.created_at ?? '',
+      comments: i.comments ?? 0,
+      url: i.html_url ?? '',
+    }));
+  }
+  if (method === 'GET' && pathname === '/api/github/pulls') {
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    return ghDetail(`/repos/${repo}/pulls?state=open&per_page=25`, (p) => ({
+      number: p.number,
+      title: p.title ?? '',
+      state: p.state ?? '',
+      user: p.user?.login ?? 'unknown',
+      created_at: p.created_at ?? '',
+      head: p.head?.ref ?? '',
+      base: p.base?.ref ?? '',
+      url: p.html_url ?? '',
+    }));
+  }
+
   // ---- GitHub secret scan (recent files of a repo) ----
   // Scans files changed in the last N commits for secret patterns.
   // Findings return a redacted line — never the secret value itself.

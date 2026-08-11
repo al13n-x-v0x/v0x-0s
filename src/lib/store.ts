@@ -13,8 +13,8 @@ import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
 import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
 import { agentClient, type AgentHello, type AgentStats } from './agent';
-import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
-import type { GithubSecretFinding } from './ai';
+import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import type { GithubSecretFinding, GithubBranch, GithubCommit, GithubIssue, GithubPull } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
 import { clamp, maskKey, timeAgo, uid } from './fmt';
@@ -129,6 +129,18 @@ export interface VoxState {
   githubLoading: boolean;
   githubError: string | null;
   githubUser: string | null;
+  // ---- github repo detail (branches / commits / issues / pulls) ----
+  githubDetail: {
+    repo: string;
+    tab: 'branches' | 'commits' | 'issues' | 'pulls';
+    loading: boolean;
+    error: string | null;
+    branch: string;
+    branches: GithubBranch[];
+    commits: GithubCommit[];
+    issues: GithubIssue[];
+    pulls: GithubPull[];
+  };
   // ---- github secret scan (Security Center) ----
   githubScan: {
     status: 'idle' | 'scanning' | 'done' | 'error';
@@ -228,6 +240,10 @@ export interface VoxState {
   syncGithub: () => Promise<void>;
   scanGithubRepo: (repo: string) => Promise<void>;
   clearGithubScan: () => void;
+  openGithubRepo: (repo: string, tab?: 'branches' | 'commits' | 'issues' | 'pulls') => Promise<void>;
+  setGithubTab: (tab: 'branches' | 'commits' | 'issues' | 'pulls') => void;
+  setGithubBranch: (branch: string) => void;
+  closeGithubRepo: () => void;
   // voice
   startListening: () => void;
   stopListening: () => void;
@@ -473,6 +489,7 @@ export const useVox = create<VoxState>()(
       githubError: null,
       githubUser: null,
       githubScan: { status: 'idle', repo: '', branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: null, scannedAt: null },
+      githubDetail: { repo: '', tab: 'branches', loading: false, error: null, branch: '', branches: [], commits: [], issues: [], pulls: [] },
       voice: initialVoice,
 
       // ================= SHELL =================
@@ -1096,6 +1113,53 @@ export const useVox = create<VoxState>()(
         sfx.success();
       },
       clearGithubScan: () => set({ githubScan: { status: 'idle', repo: '', branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: null, scannedAt: null } }),
+      openGithubRepo: async (repo, tab = 'branches') => {
+        set({ githubDetail: { repo, tab, loading: true, error: null, branch: '', branches: [], commits: [], issues: [], pulls: [] } });
+        get().logEvent('GITHUB', `Loading ${tab} for ${repo}`, 'info');
+        // load branches first (needed for the commits tab) plus the requested tab in parallel
+        const [branchesRes, tabRes] = await Promise.all([
+          fetchGithubBranches(repo),
+          tab === 'commits' ? fetchGithubCommits(repo) : tab === 'issues' ? fetchGithubIssues(repo) : tab === 'pulls' ? fetchGithubPulls(repo) : Promise.resolve({ ok: true as const, repo, data: [] }),
+        ]);
+        const branches = branchesRes.ok ? branchesRes.data : [];
+        const branch = branches[0]?.name ?? '';
+        const d = get().githubDetail;
+        if (!branchesRes.ok) {
+          set({ githubDetail: { ...d, loading: false, error: branchesRes.error ?? 'Failed to load branches', branches: [] } });
+          return;
+        }
+        set({ githubDetail: { ...d, loading: false, branch, branches } });
+        if (tab !== 'branches') get().setGithubTab(tab);
+      },
+      setGithubTab: (tab) => {
+        const d = get().githubDetail;
+        if (!d.repo || d.tab === tab) return;
+        set({ githubDetail: { ...d, tab, loading: true, error: null } });
+        const load = tab === 'commits' ? fetchGithubCommits(d.repo, d.branch || undefined) : tab === 'issues' ? fetchGithubIssues(d.repo) : tab === 'pulls' ? fetchGithubPulls(d.repo) : Promise.resolve({ ok: true as const, repo: d.repo, data: [] });
+        load.then((res) => {
+          const cur = get().githubDetail;
+          if (cur.repo !== d.repo || cur.tab !== tab) return; // stale
+          set({
+            githubDetail: {
+              ...cur, loading: false,
+              error: res.ok ? null : res.error ?? 'Failed to load',
+              branches: cur.branches, commits: tab === 'commits' ? res.data as GithubCommit[] : cur.commits,
+              issues: tab === 'issues' ? res.data as GithubIssue[] : cur.issues,
+              pulls: tab === 'pulls' ? res.data as GithubPull[] : cur.pulls,
+            },
+          });
+        });
+      },
+      setGithubBranch: (branch) => {
+        const d = get().githubDetail;
+        set({ githubDetail: { ...d, branch, tab: 'commits', loading: true, error: null } });
+        fetchGithubCommits(d.repo, branch).then((res) => {
+          const cur = get().githubDetail;
+          if (cur.repo !== d.repo) return;
+          set({ githubDetail: { ...cur, loading: false, commits: res.ok ? res.data as GithubCommit[] : [], error: res.ok ? null : res.error ?? 'Failed to load commits' } });
+        });
+      },
+      closeGithubRepo: () => set({ githubDetail: { repo: '', tab: 'branches', loading: false, error: null, branch: '', branches: [], commits: [], issues: [], pulls: [] } }),
 
       // ================= DESKTOP AGENT =================
       connectAgent: async (manualUrl, manualToken) => {
