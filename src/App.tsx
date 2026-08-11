@@ -13,6 +13,7 @@ import { Onboarding } from './components/Onboarding';
 import { APPS } from './lib/constants';
 import { Dashboard } from './apps/Dashboard';
 import { PhoneLauncher } from './apps/PhoneLauncher';
+import { PhoneHome } from './apps/PhoneHome';
 import { CodeStudio } from './apps/CodeStudio';
 import { TerminalApp } from './apps/TerminalApp';
 import { VoxAI } from './apps/VoxAI';
@@ -92,6 +93,8 @@ export default function App() {
   const safeMode = useVox((s) => s.safeMode);
   const desktopIcons = useVox((s) => s.desktopIcons);
   const [mobileNav, setMobileNav] = useState(false);
+  // Phones get a widget-style home screen; desktops get the full dashboard.
+  const [isPhone] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
 
   // boot + telemetry
   useEffect(() => {
@@ -144,7 +147,7 @@ export default function App() {
 
   if (!booted) return <BootScreen />;
 
-  const Content = SECTION_APPS[section] ?? Dashboard;
+  const Content = section === 'dashboard' && isPhone ? PhoneHome : SECTION_APPS[section] ?? Dashboard;
 
   return (
     <ErrorBoundary>
