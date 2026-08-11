@@ -44,8 +44,11 @@ function saveKeys(keys) {
 }
 let storedKeys = loadKeys();
 function getKey(id) {
-  const env = { gemini: process.env.GEMINI_API_KEY, groq: process.env.GROQ_API_KEY };
+  const env = { gemini: process.env.GEMINI_API_KEY, groq: process.env.GROQ_API_KEY, github: process.env.GITHUB_TOKEN };
   return storedKeys[id] || env[id] || '';
+}
+function getGithubToken() {
+  return getKey('github');
 }
 const PROVIDERS = {
   gemini: { label: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
@@ -202,21 +205,57 @@ const server = http.createServer(async (req, res) => {
     const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
     let result;
-    try {
-      result = await attempt(primary);
-    } catch (e1) {
-      send({ error: e1.message, category: e1.category });
-      if (settings.routingMode !== 'primary' && secondary !== primary) {
-        send({ meta: { note: `FAILOVER → ${secondary.toUpperCase()}` } });
-        try {
-          result = await attempt(secondary);
-        } catch (e2) {
-          send({ error: e2.message, category: e2.category });
-          send({ error: 'Both providers failed. VOX AI temporarily unavailable.', category: 'PROVIDER ERROR' });
+    let dualNote = '';
+
+    // ---- DUAL mode: query both providers together when both are configured ----
+    const dual = settings.routingMode === 'dual';
+    const deepTasks = ['DEEP ANALYSIS', 'CODE GENERATION', 'CODE REVIEW', 'LARGE CONTEXT'];
+    const preferred = deepTasks.includes(task) ? 'gemini' : 'groq';
+    const other = preferred === 'gemini' ? 'groq' : 'gemini';
+    const both = [preferred, other].filter((p) => getKey(p));
+
+    if (dual && both.length === 2) {
+      const settled = await Promise.allSettled([attempt(both[0]), attempt(both[1])]);
+      const ok = settled.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+      if (ok.length) {
+        const pick = ok.find((r) => r.provider === preferred) ?? ok[0];
+        result = pick;
+        const failures = settled.filter((r) => r.status === 'rejected').length;
+        dualNote = failures === 0
+          ? `PARALLEL ${both[0].toUpperCase()} + ${both[1].toUpperCase()} — both responded; ${pick.provider.toUpperCase()} selected for ${task} · ${other.toUpperCase()} cross-check ready`
+          : `PARALLEL ${both[0].toUpperCase()} + ${both[1].toUpperCase()} — ${pick.provider.toUpperCase()} responded${failures === 2 ? '' : `; ${other.toUpperCase()} failed`}`;
+        send({ meta: { note: dualNote } });
+      } else {
+        settled.forEach((r) => { if (r.status === 'rejected') send({ error: r.reason.message, category: r.reason.category }); });
+        send({ error: 'Both providers failed. VOX AI temporarily unavailable.', category: 'PROVIDER ERROR' });
+        return res.end();
+      }
+    } else if (dual) {
+      dualNote = `DUAL requested but only ${both[0]?.toUpperCase() ?? 'no provider'} configured — falling back to single provider.`;
+      send({ meta: { note: dualNote } });
+      try {
+        result = await attempt(primary);
+      } catch (e1) {
+        send({ error: e1.message, category: e1.category });
+        return res.end();
+      }
+    } else {
+      try {
+        result = await attempt(primary);
+      } catch (e1) {
+        send({ error: e1.message, category: e1.category });
+        if (settings.routingMode !== 'primary' && secondary !== primary) {
+          send({ meta: { note: `FAILOVER → ${secondary.toUpperCase()}` } });
+          try {
+            result = await attempt(secondary);
+          } catch (e2) {
+            send({ error: e2.message, category: e2.category });
+            send({ error: 'Both providers failed. VOX AI temporarily unavailable.', category: 'PROVIDER ERROR' });
+            return res.end();
+          }
+        } else {
           return res.end();
         }
-      } else {
-        return res.end();
       }
     }
 
@@ -227,7 +266,7 @@ const server = http.createServer(async (req, res) => {
       send({ delta: full.slice(0, i + step) });
       await new Promise((r) => setTimeout(r, 12));
     }
-    send({ meta: { provider: result.provider, model: result.model, latencyMs: result.latencyMs } });
+    send({ meta: { provider: result.provider, model: result.model, latencyMs: result.latencyMs, dual: dualNote } });
     send({ meta: { done: true } });
     return res.end();
   }
@@ -300,8 +339,38 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- GitHub ----
+  // Configure a GitHub PAT from the UI — stored server-side (gitignored),
+  // never returned to the browser. GITHUB_TOKEN env var also works.
+  if (method === 'POST' && pathname === '/api/github/config') {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let payload = {};
+    try { payload = JSON.parse(body); } catch { return json(400, { error: 'Invalid JSON' }); }
+    const token = String(payload.token || '').trim();
+    if (!token) return json(400, { error: 'No token provided', category: 'CONFIGURATION ERROR' });
+    if (token.length < 10) return json(400, { error: 'Token looks too short to be a valid PAT', category: 'CONFIGURATION ERROR' });
+    // validate against GitHub before persisting
+    try {
+      const res = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os', Accept: 'application/vnd.github+json' } });
+      if (!res.ok) {
+        const cat = res.status === 401 ? 'INVALID TOKEN' : res.status === 403 ? 'RATE LIMITED' : 'PROVIDER ERROR';
+        return json(401, { error: `GitHub rejected the token (HTTP ${res.status})`, category: cat });
+      }
+      const data = await res.json();
+      storedKeys.github = token;
+      saveKeys(storedKeys);
+      return json(200, { ok: true, user: data.login, masked: 'ghp_••••••••••••••••••' });
+    } catch {
+      return json(502, { error: 'GitHub request failed — network error.', category: 'NETWORK ERROR' });
+    }
+  }
+  if (method === 'DELETE' && pathname === '/api/github/config') {
+    delete storedKeys.github;
+    saveKeys(storedKeys);
+    return json(200, { ok: true });
+  }
   if (method === 'GET' && pathname === '/api/github/status') {
-    const token = process.env.GITHUB_TOKEN;
+    const token = getGithubToken();
     if (!token) return json(200, { connected: false });
     try {
       const res = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os' } });
@@ -313,8 +382,8 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (method === 'GET' && pathname === '/api/github/repos') {
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) return json(502, { error: 'GitHub requires GITHUB_TOKEN in server/.env (or OAuth). The frontend never holds credentials.' });
+    const token = getGithubToken();
+    if (!token) return json(502, { error: 'GitHub requires a token — configure it in API Manager or set GITHUB_TOKEN in server/.env. The frontend never holds credentials.' });
     try {
       const res = await fetch('https://api.github.com/user/repos?per_page=30&sort=updated', { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os', Accept: 'application/vnd.github+json' } });
       if (!res.ok) return json(502, { error: `GitHub API error (HTTP ${res.status})` });

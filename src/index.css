@@ -332,6 +332,15 @@ body {
   70%, 100% { transform: scale(2.4); opacity: 0; }
 }
 
+/* Drawer slide-in — keyframe (not transition) so it works everywhere */
+.drawer-in {
+  animation: drawerIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes drawerIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
 /* ---- Table -------------------------------------------------------- */
 .vox-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .vox-table th {
@@ -489,3 +498,13 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .vox-aurora, .scan-line, .dot-pulse::after { animation: none !important; }
 }
+
+/* Webviews that never advance animations/transitions: snap everything to its
+   final state so overlays, windows and the drawer are visible and usable. */
+html[data-anim='off'],
+html[data-anim='off'] *, html[data-anim='off'] *::before, html[data-anim='off'] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+html[data-anim='off'] .win-exit { animation: none !important; }
+html[data-anim='off'] .win-min { animation: none !important; }

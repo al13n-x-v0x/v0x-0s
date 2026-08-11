@@ -160,11 +160,12 @@ function AICfg() {
           <option value="groq">Groq</option>
         </Select>
       </Row>
-      <Row label="Routing mode" hint="AUTO routes by task, PRIMARY ONLY pins one provider, FAILOVER retries the secondary.">
+      <Row label="Routing mode" hint="AUTO routes by task, PRIMARY ONLY pins one provider, FAILOVER retries the secondary, DUAL uses both providers in parallel.">
         <Select value={s.settings.routingMode} onChange={(e) => s.setSettings({ routingMode: e.target.value as never })} className="!w-44">
           <option value="auto">SMART AUTO</option>
           <option value="primary">PRIMARY ONLY</option>
           <option value="failover">FAILOVER</option>
+          <option value="dual">DUAL (BOTH)</option>
         </Select>
       </Row>
       <SectionTitle>Generation</SectionTitle>

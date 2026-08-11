@@ -1,11 +1,30 @@
+import { useState } from 'react';
 import { useVox } from '../lib/store';
 import type { GithubRepo } from '../lib/store';
-import { Badge, Button, EmptyState, ErrorState, Icon, Panel, StatusDot } from '../components/ui';
+import { Badge, Button, EmptyState, ErrorState, Icon, Input, Panel, StatusDot } from '../components/ui';
 import { timeAgo } from '../lib/fmt';
 
 export function GitHubApp() {
   const s = useVox();
   const connected = s.settings.githubConnected;
+  const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [tokenMsg, setTokenMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const connectWithToken = async () => {
+    if (!token.trim()) return;
+    setConnecting(true);
+    setTokenMsg(null);
+    await s.connectGithub(token.trim());
+    setConnecting(false);
+    if (s.settings.githubConnected) {
+      setTokenMsg({ ok: true, text: `Connected as ${s.githubUser ?? 'GitHub user'}. Repositories loaded.` });
+      setToken('');
+    } else {
+      setTokenMsg({ ok: false, text: s.githubError ?? 'Connection failed.' });
+    }
+  };
 
   return (
     <div className="p-5 space-y-4 animate-fade-in max-w-[1200px]">
@@ -19,6 +38,7 @@ export function GitHubApp() {
             <>
               <Badge tone="green"><span className="dot dot-online" /> CONNECTED{s.githubUser ? ` · ${s.githubUser}` : ''}</Badge>
               <Button size="xs" variant="cyan" icon="RefreshCw" onClick={() => void s.syncGithub()} disabled={s.githubLoading}>SYNC</Button>
+              <Button size="xs" variant="danger" icon="Link2Off" onClick={() => void s.disconnectGithub()}>DISCONNECT</Button>
             </>
           ) : (
             <Badge tone="dim">○ NOT CONNECTED</Badge>
@@ -34,7 +54,7 @@ export function GitHubApp() {
             <ErrorState
               title="GITHUB CONNECTION ERROR"
               body={s.githubError}
-              onRetry={() => void s.connectGithub()}
+              onRetry={() => useVox.setState({ githubError: null })}
               actions={<Button size="xs" variant="ghost" onClick={() => s.setSection('settings')}>OPEN SETTINGS</Button>}
             />
           ) : (
@@ -44,11 +64,35 @@ export function GitHubApp() {
               <p className="text-[12px] text-vox-muted mt-2 max-w-md mx-auto leading-relaxed">
                 Connect GitHub to load real repositories, branches, commits, issues, and pull requests.
               </p>
-              <div className="mt-5">
-                <Button variant="solid" icon="Github" onClick={() => void s.connectGithub()}>CONNECT GITHUB</Button>
+              <div className="mt-5 flex flex-col items-center gap-3">
+                <Button variant="solid" icon="Github" onClick={() => void s.connectGithub()} disabled={s.githubLoading}>CONNECT GITHUB</Button>
+                <div className="w-full max-w-md glass-inset p-3.5 text-left">
+                  <p className="hud-label mb-2">OR USE A PERSONAL ACCESS TOKEN</p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        type={showToken ? 'text' : 'password'}
+                        value={token}
+                        onChange={(e) => { setToken(e.target.value); setTokenMsg(null); }}
+                        placeholder="ghp_••••••••••••••••••••"
+                        autoComplete="off"
+                      />
+                      <button aria-label={showToken ? 'Hide token' : 'Show token'} onClick={() => setShowToken(!showToken)} className="absolute right-2 top-1/2 -translate-y-1/2 text-vox-dim hover:text-vox-text">
+                        <Icon name={showToken ? 'EyeOff' : 'Eye'} size={14} />
+                      </button>
+                    </div>
+                    <Button variant="cyan" icon="PlugZap" disabled={connecting || !token.trim()} onClick={() => void connectWithToken()}>
+                      {connecting ? 'VALIDATING…' : 'CONNECT'}
+                    </Button>
+                  </div>
+                  {tokenMsg && <p className={tokenMsg.ok ? 'text-emerald-300' : 'text-red-300'} style={{ fontSize: 11, marginTop: 8 }}>{tokenMsg.text}</p>}
+                  <p className="text-[10px] text-vox-dim mt-2.5 font-mono leading-relaxed">
+                    The token is sent to the VOX backend once, validated against the GitHub API, and stored server-side (gitignored). It is never saved or displayed in the browser.
+                  </p>
+                </div>
               </div>
               <p className="text-[10px] text-vox-dim mt-4 font-mono max-w-md mx-auto">
-                Authentication is handled by the VOX backend (OAuth or GITHUB_TOKEN in server/.env). Tokens are never exposed to the frontend.
+                Or set GITHUB_TOKEN in server/.env — authentication is handled by the VOX backend, never the frontend.
               </p>
             </div>
           )}

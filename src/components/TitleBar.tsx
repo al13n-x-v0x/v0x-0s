@@ -5,7 +5,7 @@ import { Icon, Kbd } from './ui';
 import { fmtClock, fmtDate } from '../lib/fmt';
 import { sfx } from '../lib/sounds';
 
-export function TitleBar() {
+export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
   const setPalette = useVox((s) => s.setPalette);
   const setNotifOpen = useVox((s) => s.setNotifOpen);
   const notifOpen = useVox((s) => s.notifOpen);
@@ -43,6 +43,17 @@ export function TitleBar() {
         </span>
         <span className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 font-mono text-[9px] text-vox-dim">v{APP_VERSION}</span>
       </button>
+
+      {/* mobile nav toggle — sidebar is off-canvas below lg */}
+      {onOpenNav && (
+        <button
+          onClick={onOpenNav}
+          aria-label="Open navigation menu"
+          className="lg:hidden p-2 rounded-lg text-vox-muted hover:text-vox-text hover:bg-white/5"
+        >
+          <Icon name="Menu" size={16} />
+        </button>
+      )}
 
       {/* command bar */}
       <button

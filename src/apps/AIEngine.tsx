@@ -103,11 +103,16 @@ export function AIEngine() {
                   <option value="auto">SMART AUTO</option>
                   <option value="primary">PRIMARY ONLY</option>
                   <option value="failover">FAILOVER</option>
+                  <option value="dual">DUAL — USE BOTH (PARALLEL)</option>
                 </Select>
               </Field>
               <div className="glass-inset px-3 py-2.5">
                 <p className="text-[10px] text-vox-muted leading-relaxed">
-                  <span className="text-cyan-300 font-semibold">AUTO ROUTING:</span> if the primary provider fails, VOX automatically attempts the secondary provider. Deep reasoning and code review prefer Gemini; fast responses prefer Groq.
+                  {s.settings.routingMode === 'dual' ? (
+                    <><span className="text-violet-300 font-semibold">DUAL ROUTING:</span> when both providers are configured, VOX queries <span className="text-blue-300">Gemini</span> and <span className="text-orange-300">Groq</span> together in parallel. Deep reasoning, code generation and reviews pick Gemini; fast responses pick Groq — the other response is kept as a cross-check, and if one fails the other still answers.</>
+                  ) : (
+                    <><span className="text-cyan-300 font-semibold">AUTO ROUTING:</span> if the primary provider fails, VOX automatically attempts the secondary provider. Deep reasoning and code review prefer Gemini; fast responses prefer Groq.</>
+                  )}
                 </p>
               </div>
             </div>

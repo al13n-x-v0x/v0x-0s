@@ -212,7 +212,7 @@ export interface Settings {
   // ai
   primaryProvider: ProviderId | 'auto';
   secondaryProvider: ProviderId;
-  routingMode: 'auto' | 'primary' | 'failover';
+  routingMode: 'auto' | 'primary' | 'failover' | 'dual';
   temperature: number;
   maxTokens: number;
   systemPrompt: string;

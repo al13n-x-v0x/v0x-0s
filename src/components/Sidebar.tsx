@@ -37,8 +37,8 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
       {mobileOpen && <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={onCloseMobile} aria-hidden />}
       <aside
         className={clsx(
-          'w-[212px] shrink-0 flex flex-col border-r border-vox-line bg-ink-900/85 backdrop-blur-xl z-30 transition-transform',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+          'w-[212px] shrink-0 flex flex-col border-r border-vox-line bg-ink-900/85 backdrop-blur-xl z-50 lg:z-30',
+          mobileOpen ? 'drawer-in translate-x-0' : '-translate-x-full lg:translate-x-0',
           'fixed lg:static top-12 bottom-0 lg:top-auto lg:bottom-auto lg:h-auto',
         )}
         aria-label="Navigation"

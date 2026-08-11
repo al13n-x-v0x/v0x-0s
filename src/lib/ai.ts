@@ -25,6 +25,7 @@ export interface ChatResult {
   demo?: boolean;
   error?: string;
   errorCategory?: string;
+  note?: string;
 }
 
 export interface StreamCallbacks {
@@ -116,6 +117,7 @@ export async function streamChat(
         provider: meta.provider ?? 'gemini',
         model: meta.model ?? '',
         latencyMs: meta.latencyMs ?? performance.now() - started,
+        note: (meta as { note?: string; dual?: string }).note ?? (meta as { dual?: string }).dual,
       });
     }
   } catch (e) {
@@ -180,6 +182,31 @@ export async function githubStatus(): Promise<{ connected: boolean; user?: strin
     return { connected: !!data.connected, user: data.user };
   } catch {
     return { connected: false };
+  }
+}
+
+export async function saveGithubToken(token: string): Promise<{ ok: boolean; user?: string; error?: string; category?: string }> {
+  try {
+    const res = await fetch(`${BASE}/github/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error ?? `HTTP ${res.status}`, category: data.category };
+    return { ok: true, user: data.user };
+  } catch {
+    return { ok: false, error: 'Backend unreachable — start the VOX server or set GITHUB_TOKEN in server/.env', category: 'NETWORK ERROR' };
+  }
+}
+
+export async function removeGithubToken(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/github/config`, { method: 'DELETE' });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Backend unreachable' };
   }
 }
 

@@ -11,7 +11,7 @@ import { SEED_EXTENSIONS, SEED_AUTOMATION } from '../data/system';
 import { runCommand, sessionPrompt } from './shell';
 import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
-import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
 import { clamp, maskKey, timeAgo, uid } from './fmt';
@@ -177,7 +177,8 @@ export interface VoxState {
   runHealthScan: (kind: 'quick' | 'full' | 'project' | 'deps') => Promise<void>;
   cancelScan: () => void;
   // github
-  connectGithub: () => Promise<void>;
+  connectGithub: (token?: string) => Promise<void>;
+  disconnectGithub: () => Promise<void>;
   syncGithub: () => Promise<void>;
   // voice
   startListening: () => void;
@@ -791,7 +792,10 @@ export const useVox = create<VoxState>()(
               onDelta: (text) => {
                 set({ aiStatus: 'generating', aiMessages: get().aiMessages.map((m, i) => (i === assistantIdx ? { ...m, content: text } : m)) });
               },
-              onDone: (r) => finish(r.text, r.provider, r.latencyMs, false),
+              onDone: (r) => {
+                if (r.note) get().setRouterLog(routerEntry(task, r.provider, true, `· ${r.note}`));
+                finish(r.text, r.provider, r.latencyMs, false);
+              },
               onError: (r) => {
                 // No provider configured on the backend — fall back to the clearly-labeled demo assistant.
                 if (r.errorCategory === 'CONFIGURATION ERROR' && s.demoAssistant) {
@@ -882,7 +886,7 @@ export const useVox = create<VoxState>()(
           const patch: Partial<Settings> = {};
           if (cfg.primaryProvider === 'gemini' || cfg.primaryProvider === 'groq' || cfg.primaryProvider === 'auto') patch.primaryProvider = cfg.primaryProvider;
           if (cfg.secondaryProvider === 'gemini' || cfg.secondaryProvider === 'groq') patch.secondaryProvider = cfg.secondaryProvider;
-          if (['auto', 'primary', 'failover'].includes(cfg.routingMode)) patch.routingMode = cfg.routingMode;
+          if (['auto', 'primary', 'failover', 'dual'].includes(cfg.routingMode)) patch.routingMode = cfg.routingMode;
           if (typeof cfg.temperature === 'number') patch.temperature = clamp(cfg.temperature, 0, 2);
           if (typeof cfg.maxTokens === 'number') patch.maxTokens = cfg.maxTokens;
           get().setSettings(patch);
@@ -933,16 +937,33 @@ export const useVox = create<VoxState>()(
       cancelScan: () => set({ scanCancel: true, health: { ...get().health, scanning: false } }),
 
       // ================= GITHUB =================
-      connectGithub: async () => {
+      connectGithub: async (token?: string) => {
         set({ githubLoading: true, githubError: null });
+        // optional PAT flow: send the token to the backend once, validate it there
+        if (token && token.trim()) {
+          const saved = await saveGithubToken(token.trim());
+          if (!saved.ok) {
+            set({ githubLoading: false, githubError: `${saved.error ?? 'Failed to save GitHub token'}${saved.category ? ` · ${saved.category}` : ''}. The token is never stored in the browser.` });
+            get().logEvent('GITHUB', `GitHub token rejected by backend: ${saved.category ?? 'error'}`, 'error');
+            return;
+          }
+          set({ githubUser: saved.user ?? null });
+          get().logEvent('SECURITY', 'GitHub token configured (backend-side)', 'success');
+        }
         const st = await githubStatus();
         if (!st.connected) {
-          set({ githubLoading: false, githubError: 'GitHub connection requires the VOX backend with a GITHUB_TOKEN (server/.env) or OAuth credentials. The frontend never holds GitHub credentials.' });
+          set({ githubLoading: false, githubError: 'GitHub connection requires the VOX backend with a GITHUB_TOKEN (server/.env) or a personal access token configured in API Manager. The frontend never holds GitHub credentials.' });
           get().logEvent('GITHUB', 'GitHub connect attempt: backend has no credentials', 'warning');
           return;
         }
         set({ githubUser: st.user ?? null, settings: { ...get().settings, githubConnected: true }, githubLoading: false });
         await get().syncGithub();
+      },
+      disconnectGithub: async () => {
+        await removeGithubToken();
+        set({ githubUser: null, githubRepos: [], settings: { ...get().settings, githubConnected: false } });
+        get().logEvent('GITHUB', 'GitHub disconnected — token removed from backend', 'warning');
+        get().pushNotification({ category: 'GITHUB', severity: 'info', title: 'GITHUB DISCONNECTED', body: 'The stored token was removed. GITHUB_TOKEN in server/.env, if set, still applies.' });
       },
       syncGithub: async () => {
         set({ githubLoading: true, githubError: null });

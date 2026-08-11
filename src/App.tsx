@@ -141,7 +141,7 @@ export default function App() {
         <div className="vox-grid" />
         <div className="vox-aurora" />
         <div className="relative z-10 flex flex-col h-full">
-          <TitleBar />
+          <TitleBar onOpenNav={() => setMobileNav(true)} />
 
           <div className="flex flex-1 min-h-0 relative">
             <Sidebar mobileOpen={mobileNav} onCloseMobile={() => setMobileNav(false)} />
