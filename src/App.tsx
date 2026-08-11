@@ -3,6 +3,7 @@ import { useVox } from './lib/store';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { Dock } from './components/Dock';
+import { MobileTabBar } from './components/MobileTabBar';
 import { CommandPalette } from './components/CommandPalette';
 import { NotificationsPanel, QuickSettings, StartMenu, ContextMenu } from './components/Overlays';
 import { BootScreen, RecoveryScreen } from './components/BootScreen';
@@ -11,6 +12,7 @@ import { Icon } from './components/ui';
 import { Onboarding } from './components/Onboarding';
 import { APPS } from './lib/constants';
 import { Dashboard } from './apps/Dashboard';
+import { PhoneLauncher } from './apps/PhoneLauncher';
 import { CodeStudio } from './apps/CodeStudio';
 import { TerminalApp } from './apps/TerminalApp';
 import { VoxAI } from './apps/VoxAI';
@@ -36,6 +38,7 @@ import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
   dashboard: () => <Dashboard />,
+  apps: () => <PhoneLauncher />,
   code: () => <CodeStudio />,
   terminal: () => <TerminalApp />,
   voxai: () => <VoxAI />,
@@ -176,7 +179,8 @@ export default function App() {
             </div>
           </div>
 
-          <Dock />
+          <div className="hidden lg:block"><Dock /></div>
+          <MobileTabBar />
         </div>
 
         {/* overlays */}

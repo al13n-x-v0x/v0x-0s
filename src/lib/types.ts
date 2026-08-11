@@ -6,6 +6,7 @@ export type ThemeId = 'night' | 'cyber' | 'midnight' | 'graphite';
 
 export type SectionId =
   | 'dashboard'
+  | 'apps'
   | 'code'
   | 'terminal'
   | 'voxai'

@@ -39,9 +39,9 @@ export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
           <span className="font-display font-bold text-[14px] tracking-[0.14em] text-white">
             VOX-OS<span className="align-super text-[8px] text-vox-dim ml-0.5">®</span>
           </span>
-          <span className="text-[8px] tracking-[0.3em] text-vox-violet uppercase mt-0.5">A Dev's First Choice</span>
+          <span className="hidden sm:block text-[8px] tracking-[0.3em] text-vox-violet uppercase mt-0.5">A Dev's First Choice</span>
         </span>
-        <span className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 font-mono text-[9px] text-vox-dim">v{APP_VERSION}</span>
+        <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded border border-white/10 bg-white/5 font-mono text-[9px] text-vox-dim">v{APP_VERSION}</span>
       </button>
 
       {/* mobile nav toggle — sidebar is off-canvas below lg */}
@@ -55,15 +55,22 @@ export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
         </button>
       )}
 
-      {/* command bar */}
+      {/* command bar — full bar on desktop, compact icon on phones */}
       <button
         onClick={() => { sfx.open(); setPalette(true, 'command'); }}
-        className="flex-1 max-w-[480px] h-8 mx-2 flex items-center gap-2.5 px-3 rounded-lg border border-vox-line bg-ink-850/80 hover:border-vox-cyan/40 hover:bg-ink-800 transition-colors group"
+        className="hidden sm:flex flex-1 max-w-[480px] h-8 mx-2 items-center gap-2.5 px-3 rounded-lg border border-vox-line bg-ink-850/80 hover:border-vox-cyan/40 hover:bg-ink-800 transition-colors group"
         aria-label="Open command palette (Ctrl+K)"
       >
         <Icon name="Terminal" size={13} className="text-vox-dim group-hover:text-vox-cyan" />
         <span className="font-mono text-[11.5px] text-vox-dim group-hover:text-vox-muted">Run command or search…</span>
         <span className="ml-auto flex items-center gap-1"><Kbd>CTRL</Kbd><Kbd>K</Kbd></span>
+      </button>
+      <button
+        onClick={() => { sfx.open(); setPalette(true, 'command'); }}
+        aria-label="Search"
+        className="sm:hidden p-2 rounded-lg text-vox-muted hover:text-vox-text hover:bg-white/5 ml-auto"
+      >
+        <Icon name="Search" size={16} />
       </button>
 
       <div className="ml-auto flex items-center gap-1">
@@ -71,7 +78,7 @@ export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
           <span className={`dot ${backend === 'online' ? 'dot-online' : backend === 'offline' ? 'dot-amber' : 'dot-dim'}`} />
           <span className="font-mono text-[9.5px] tracking-[0.12em] text-vox-muted uppercase">{backend === 'online' ? 'Backend Online' : backend === 'offline' ? 'Backend Offline' : 'Detecting'}</span>
         </span>
-        <button aria-label="Command palette" onClick={() => setPalette(true, 'command')} className="p-2 rounded-lg text-vox-muted hover:text-vox-text hover:bg-white/5"><Icon name="Command" size={15} /></button>
+        <button aria-label="Command palette" onClick={() => setPalette(true, 'command')} className="hidden sm:block p-2 rounded-lg text-vox-muted hover:text-vox-text hover:bg-white/5"><Icon name="Command" size={15} /></button>
         <button
           aria-label="Notifications"
           onClick={() => { sfx.command(); setNotifOpen(!notifOpen); }}
@@ -85,7 +92,7 @@ export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
           aria-label={desktopMode ? 'Switch to hub view' : 'Switch to desktop view'}
           title={desktopMode ? 'Hub view' : 'Desktop view'}
           onClick={() => { sfx.command(); setDesktopMode(!desktopMode); }}
-          className={`p-2 rounded-lg ${desktopMode ? 'text-vox-cyan bg-cyan-400/10' : 'text-vox-muted hover:text-vox-text hover:bg-white/5'}`}
+          className={`hidden sm:block p-2 rounded-lg ${desktopMode ? 'text-vox-cyan bg-cyan-400/10' : 'text-vox-muted hover:text-vox-text hover:bg-white/5'}`}
         >
           <Icon name={desktopMode ? 'PanelsTopLeft' : 'Monitor'} size={15} />
         </button>
@@ -96,8 +103,8 @@ export function TitleBar({ onOpenNav }: { onOpenNav?: () => void }) {
         >
           <Icon name={settings.theme === 'night' ? 'Sun' : 'Moon'} size={15} />
         </button>
-        <div className="w-px h-5 bg-vox-line mx-1" />
-        <div className="px-2 text-right leading-tight select-none">
+        <div className="hidden sm:block w-px h-5 bg-vox-line mx-1" />
+        <div className="hidden sm:block px-2 text-right leading-tight select-none">
           <div className="font-mono text-[12px] text-vox-text tabular-nums">{fmtClock(now)}</div>
           <div className="text-[9px] text-vox-dim">{fmtDate(now).split(',')[0]}</div>
         </div>

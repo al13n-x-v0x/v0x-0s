@@ -3,6 +3,7 @@ import type { NavItem, ProviderId, SectionId } from './types';
 // ---------- Icons (lucide names) ----------
 export const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  { id: 'apps', label: 'App Drawer', icon: 'LayoutGrid' },
   { id: 'code', label: 'Code Studio', icon: 'Code2' },
   { id: 'terminal', label: 'Terminal', icon: 'SquareTerminal' },
   { id: 'voxai', label: 'VOX AI', icon: 'Sparkles' },
@@ -60,6 +61,43 @@ export const APPS: { id: string; title: string; icon: string; section: SectionId
   { id: 'devtools', title: 'Dev Tools', icon: 'Wrench', section: 'devtools' },
   { id: 'eventlog', title: 'Event Log', icon: 'ListTree', section: 'eventlog' },
   { id: 'errors', title: 'Error Center', icon: 'TriangleAlert', section: 'errors' },
+];
+
+// ---------- App drawer (phone launcher) ----------
+// Every section gets a tile with a per-app gradient tint. Order defines
+// the launcher grid + search.
+export const LAUNCHER: { id: SectionId; label: string; icon: string; tint: [string, string]; blurb: string }[] = [
+  { id: 'voxai', label: 'VOX AI', icon: 'Sparkles', tint: ['#22d3ee', '#3b82f6'], blurb: 'AI assistant' },
+  { id: 'terminal', label: 'Terminal', icon: 'SquareTerminal', tint: ['#10b981', '#059669'], blurb: 'Real shell' },
+  { id: 'code', label: 'Code Studio', icon: 'Code2', tint: ['#3b82f6', '#8b5cf6'], blurb: 'Editor + build' },
+  { id: 'files', label: 'Files', icon: 'FolderTree', tint: ['#f59e0b', '#ef4444'], blurb: 'File manager' },
+  { id: 'github', label: 'GitHub', icon: 'GitBranch', tint: ['#94a3b8', '#64748b'], blurb: 'Repos & push' },
+  { id: 'projects', label: 'Projects', icon: 'FolderKanban', tint: ['#8b5cf6', '#d946ef'], blurb: 'Workspaces' },
+  { id: 'gaming', label: 'Gaming', icon: 'Gamepad2', tint: ['#f43f5e', '#8b5cf6'], blurb: 'Boost & play' },
+  { id: 'health', label: 'Health', icon: 'Activity', tint: ['#34d399', '#22d3ee'], blurb: 'Telemetry' },
+  { id: 'performance', label: 'Performance', icon: 'Gauge', tint: ['#fbbf24', '#f97316'], blurb: 'Speed & boost' },
+  { id: 'security', label: 'Security', icon: 'ShieldCheck', tint: ['#10b981', '#22d3ee'], blurb: 'Scanner + secrets' },
+  { id: 'recon', label: 'Recon Lab', icon: 'Radar', tint: ['#22d3ee', '#8b5cf6'], blurb: 'Network recon' },
+  { id: 'remote', label: 'Remote', icon: 'Smartphone', tint: ['#3b82f6', '#22d3ee'], blurb: 'Control from phone' },
+  { id: 'devtools', label: 'Dev Tools', icon: 'Wrench', tint: ['#f97316', '#ef4444'], blurb: 'Kitchen sink' },
+  { id: 'apimanager', label: 'API Keys', icon: 'KeyRound', tint: ['#eab308', '#f59e0b'], blurb: 'Providers' },
+  { id: 'automation', label: 'Automation', icon: 'Workflow', tint: ['#06b6d4', '#3b82f6'], blurb: 'Workflows' },
+  { id: 'eventlog', label: 'Event Log', icon: 'ListTree', tint: ['#64748b', '#475569'], blurb: 'System events' },
+  { id: 'errors', label: 'Errors', icon: 'TriangleAlert', tint: ['#ef4444', '#f97316'], blurb: 'Error center' },
+  { id: 'taskmanager', label: 'Task Manager', icon: 'ListOrdered', tint: ['#8b5cf6', '#6366f1'], blurb: 'Processes' },
+  { id: 'systeminfo', label: 'System Info', icon: 'MonitorCog', tint: ['#0ea5e9', '#6366f1'], blurb: 'Hardware' },
+  { id: 'diagnostics', label: 'Diagnostics', icon: 'Stethoscope', tint: ['#14b8a6', '#0ea5e9'], blurb: 'Troubleshoot' },
+  { id: 'agent', label: 'Desktop Agent', icon: 'Bot', tint: ['#22d3ee', '#8b5cf6'], blurb: 'Local daemon' },
+  { id: 'memory', label: 'VOX Memory', icon: 'Brain', tint: ['#d946ef', '#8b5cf6'], blurb: 'Recall & context' },
+  { id: 'voice', label: 'Voice Engine', icon: 'Mic', tint: ['#f43f5e', '#f59e0b'], blurb: 'Talk to VOX' },
+  { id: 'aiengine', label: 'AI Engine', icon: 'Cpu', tint: ['#6366f1', '#8b5cf6'], blurb: 'Model routing' },
+  { id: 'extensions', label: 'Extensions', icon: 'Puzzle', tint: ['#22d3ee', '#34d399'], blurb: 'Plugins' },
+  { id: 'marketplace', label: 'Marketplace', icon: 'Store', tint: ['#f59e0b', '#ef4444'], blurb: 'Add-ons' },
+  { id: 'backup', label: 'Backup', icon: 'HardDriveDownload', tint: ['#64748b', '#0ea5e9'], blurb: 'Snapshots' },
+  { id: 'history', label: 'History', icon: 'History', tint: ['#14b8a6', '#22d3ee'], blurb: 'Commands' },
+  { id: 'profile', label: 'Profile', icon: 'UserRound', tint: ['#8b5cf6', '#d946ef'], blurb: 'Developer card' },
+  { id: 'voxcore', label: 'VOX Core', icon: 'Orbit', tint: ['#22d3ee', '#3b82f6'], blurb: 'Kernel' },
+  { id: 'settings', label: 'Settings', icon: 'Settings', tint: ['#94a3b8', '#64748b'], blurb: 'System settings' },
 ];
 
 // ---------- AI providers ----------

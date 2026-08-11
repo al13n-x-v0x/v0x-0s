@@ -57,7 +57,8 @@ body {
    browsers these resolve to 0px and the layout is unchanged. */
 .vox-shell {
   padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
+  /* bottom inset is owned by the mobile tab bar / fixed overlays so their
+     backgrounds extend cleanly into the gesture area */
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
@@ -83,6 +84,17 @@ body {
   .vox-dock button,
   .vox-nav-btn {
     min-height: 42px;
+  }
+}
+
+/* ---- Phone polish -----------------------------------------------------
+   Softer radii and roomier tap targets for a native-app feel. */
+@media (max-width: 640px) {
+  :root {
+    --radius: 16px;
+  }
+  main {
+    padding-bottom: 6px;
   }
 }
 
