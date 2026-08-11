@@ -21,7 +21,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
       data-active={section === id && !desktopMode}
       onClick={() => { sfx.command(); setSection(id); onCloseMobile(); }}
       className={clsx(
-        'group w-full flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-left transition-all',
+        'vox-nav-btn group w-full flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-left transition-all',
         section === id && !desktopMode
           ? 'bg-cyan-400/10 text-cyan-200 border-l-2 border-cyan-400 shadow-[inset_0_0_18px_-8px_rgba(34,211,238,0.4)]'
           : 'text-vox-muted hover:text-vox-text hover:bg-white/[0.04] border-l-2 border-transparent',
@@ -40,7 +40,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: { mobileOpen: boolean; on
         className={clsx(
           'w-[212px] shrink-0 flex flex-col border-r border-vox-line bg-ink-900/85 backdrop-blur-xl z-50 lg:z-30',
           mobileOpen ? 'drawer-in translate-x-0' : '-translate-x-full lg:translate-x-0',
-          'fixed lg:static top-12 bottom-0 lg:top-auto lg:bottom-auto lg:h-auto',
+          'vox-drawer lg:static lg:top-auto lg:bottom-auto lg:h-auto',
         )}
         aria-label="Navigation"
       >

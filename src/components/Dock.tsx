@@ -33,7 +33,7 @@ export function Dock() {
   const running = windows.filter((w) => !w.minimized);
 
   return (
-    <footer className="h-[52px] shrink-0 relative z-40 px-3 pb-2.5 pointer-events-none">
+    <footer className="vox-dock h-[52px] shrink-0 relative z-40 px-3 pb-2.5 pointer-events-none">
       <div className="h-full max-w-[1100px] mx-auto flex items-center gap-1.5 glass !rounded-2xl px-2 pointer-events-auto" style={{ boxShadow: '0 12px 40px -12px rgba(0,0,0,0.8), 0 0 0 1px rgba(148,163,184,0.08)' }}>
         {/* start */}
         <button

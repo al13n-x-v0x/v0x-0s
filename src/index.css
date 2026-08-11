@@ -44,6 +44,46 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
   user-select: none;
+  /* Touch-first: no tap highlight flash, no double-tap zoom delay,
+     no pull-to-refresh in standalone PWA / Android WebView. */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* ---- Safe-area insets (Android edge-to-edge / iOS notch) -----------
+   The shell draws behind the status bar (windowDrawsSystemBarBackgrounds),
+   so key chrome pads itself with env(safe-area-inset-*). On desktop and
+   browsers these resolve to 0px and the layout is unchanged. */
+.vox-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Overlays are position:fixed (viewport-anchored), so they get their own
+   safe-area offsets instead of inheriting the shell padding. */
+.vox-fixed-top {
+  top: calc(48px + env(safe-area-inset-top)) !important;
+}
+.vox-fixed-bottom-16 {
+  bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+}
+.vox-fixed-bottom-60 {
+  bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+}
+.vox-drawer {
+  top: calc(48px + env(safe-area-inset-top));
+  bottom: env(safe-area-inset-bottom);
+}
+
+/* Touch targets: dock and nav buttons reach ~44px on small screens. */
+@media (max-width: 640px) {
+  .vox-dock button,
+  .vox-nav-btn {
+    min-height: 42px;
+  }
 }
 
 [data-fs] {

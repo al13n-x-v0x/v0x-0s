@@ -13,6 +13,15 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- VOX-OS dark chrome: status + nav bars match the shell, light icons,
+             and the web view draws behind display cutouts (notches/punch-holes).
+             Items unknown to older platform versions are silently ignored. -->
+        <item name="android:statusBarColor">#05060a</item>
+        <item name="android:navigationBarColor">#05060a</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 
 

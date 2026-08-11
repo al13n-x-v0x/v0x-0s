@@ -145,7 +145,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="h-full flex flex-col vox-stage overflow-hidden">
+      <div className="h-full flex flex-col vox-stage vox-shell overflow-hidden">
         <div className="vox-grid" />
         <div className="vox-aurora" />
         <div className="relative z-10 flex flex-col h-full">

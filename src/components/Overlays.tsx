@@ -26,7 +26,7 @@ export function NotificationsPanel() {
 
   if (!open) return null;
   return (
-    <div ref={ref} className="fixed top-12 right-16 z-[90] w-[380px] glass hud-border vox-pop flex flex-col overflow-hidden" style={{ maxHeight: '70vh' }}>
+    <div ref={ref} className="fixed vox-fixed-top right-16 z-[90] w-[380px] glass hud-border vox-pop flex flex-col overflow-hidden" style={{ maxHeight: '70vh' }}>
       <header className="flex items-center px-4 py-3 border-b border-vox-line">
         <h2 className="panel-title">Notification Center</h2>
         <div className="ml-auto flex items-center gap-2">
@@ -92,7 +92,7 @@ export function QuickSettings() {
   ];
 
   return (
-    <div ref={ref} className="fixed bottom-16 right-3 z-[90] w-[340px] glass hud-border vox-pop overflow-hidden">
+    <div ref={ref} className="fixed vox-fixed-bottom-16 right-3 z-[90] w-[340px] glass hud-border vox-pop overflow-hidden">
       <header className="flex items-center px-4 py-3 border-b border-vox-line">
         <h2 className="panel-title">Quick Settings</h2>
         <span className="ml-auto font-mono text-[10px] text-vox-dim">{fmtClock()} · {fmtDate().split(',')[0]}</span>
@@ -155,7 +155,7 @@ export function StartMenu() {
   );
 
   return (
-    <div ref={ref} className="fixed bottom-[60px] left-3 z-[90] w-[520px] max-w-[92vw] glass hud-border vox-pop overflow-hidden">
+    <div ref={ref} className="fixed vox-fixed-bottom-60 left-3 z-[90] w-[520px] max-w-[92vw] glass hud-border vox-pop overflow-hidden">
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center gap-2 glass-inset px-3 py-2">
           <Icon name="Search" size={13} className="text-vox-dim" />
