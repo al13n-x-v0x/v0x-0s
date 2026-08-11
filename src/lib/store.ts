@@ -13,7 +13,7 @@ import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
 import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
 import { agentClient, type AgentHello, type AgentStats } from './agent';
-import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, createGithubRepo, pushGithubCommit, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
 import type { GithubSecretFinding, GithubBranch, GithubCommit, GithubIssue, GithubPull } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
@@ -241,6 +241,8 @@ export interface VoxState {
   // github
   connectGithub: (token?: string) => Promise<void>;
   disconnectGithub: () => Promise<void>;
+  createGithubRepo: (name: string, description?: string, isPrivate?: boolean) => Promise<void>;
+  pushGithubCommit: (message?: string) => Promise<void>;
   syncGithub: () => Promise<void>;
   scanGithubRepo: (repo: string) => Promise<void>;
   clearGithubScan: () => void;
@@ -1123,6 +1125,36 @@ export const useVox = create<VoxState>()(
         set({ githubUser: null, githubRepos: [], settings: { ...get().settings, githubConnected: false } });
         get().logEvent('GITHUB', 'GitHub disconnected — token removed from backend', 'warning');
         get().pushNotification({ category: 'GITHUB', severity: 'info', title: 'GITHUB DISCONNECTED', body: 'The stored token was removed. GITHUB_TOKEN in server/.env, if set, still applies.' });
+      },
+      createGithubRepo: async (name, description, isPrivate = false) => {
+        set({ githubLoading: true, githubError: null });
+        const r = await createGithubRepo(name, description ?? '', isPrivate);
+        set({ githubLoading: false });
+        if (!r.ok) {
+          set({ githubError: `${r.error ?? 'Failed to create repo'}${r.category ? ` · ${r.category}` : ''}` });
+          get().logEvent('GITHUB', `Repo creation failed: ${r.category ?? 'error'}`, 'error');
+          return;
+        }
+        get().pushNotification({ category: 'GITHUB', severity: 'success', title: 'REPO CREATED', body: `${r.repo} created on GitHub.` });
+        get().logEvent('GITHUB', `Repo created: ${r.repo}`, 'success');
+        await get().syncGithub();
+      },
+      pushGithubCommit: async (message) => {
+        set({ githubLoading: true, githubError: null });
+        const r = await pushGithubCommit(message?.trim() || 'chore: commit from VOX-OS');
+        set({ githubLoading: false });
+        if (!r.ok) {
+          set({ githubError: `${r.error ?? 'Commit & push failed'}${r.category ? ` · ${r.category}` : ''}` });
+          get().logEvent('GITHUB', `Commit & push failed: ${r.category ?? 'error'}`, 'error');
+          return;
+        }
+        if (r.skipped) {
+          get().pushNotification({ category: 'GITHUB', severity: 'info', title: 'NOTHING TO COMMIT', body: 'Working tree is clean — no changes to push.' });
+          return;
+        }
+        get().pushNotification({ category: 'GITHUB', severity: 'success', title: 'PUSHED TO GITHUB', body: `Changes committed and pushed to ${r.branch ?? 'main'}.` });
+        get().logEvent('GITHUB', `Committed and pushed to ${r.branch ?? 'main'}`, 'success');
+        sfx.success();
       },
       syncGithub: async () => {
         set({ githubLoading: true, githubError: null });

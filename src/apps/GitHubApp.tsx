@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useVox } from '../lib/store';
 import type { GithubRepo } from '../lib/store';
-import { Badge, Button, EmptyState, ErrorState, Icon, Input, Loading, Panel, Select, StatusDot, Tabs } from '../components/ui';
+import { Badge, Button, EmptyState, ErrorState, Field, Icon, Input, Loading, Modal, Panel, Select, StatusDot, Tabs } from '../components/ui';
 import { timeAgo } from '../lib/fmt';
 import type { GithubBranch, GithubCommit, GithubIssue, GithubPull } from '../lib/ai';
 
@@ -13,6 +13,12 @@ export function GitHubApp() {
   const [showToken, setShowToken] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [tokenMsg, setTokenMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [repoOpen, setRepoOpen] = useState(false);
+  const [repoName, setRepoName] = useState('');
+  const [repoDesc, setRepoDesc] = useState('');
+  const [repoPrivate, setRepoPrivate] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
+  const [pushMsg, setPushMsg] = useState('chore: commit from VOX-OS');
 
   const connectWithToken = async () => {
     if (!token.trim()) return;
@@ -128,6 +134,49 @@ export function GitHubApp() {
           <p className="text-[10px] text-vox-dim font-mono">Real data from the GitHub API via the VOX backend. Nothing is fabricated.</p>
         </>
       )}
+
+      {connected && !detail.repo && (
+        <Panel title="Dev Actions" icon="Zap" glow="cyan" bodyClassName="!p-3.5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button variant="cyan" icon="FolderPlus" onClick={() => { setRepoOpen(true); setRepoName(''); setRepoDesc(''); }} disabled={s.githubLoading}>CREATE REPO</Button>
+            <Button variant="violet" icon="GitCommitHorizontal" onClick={() => setPushOpen(true)} disabled={s.githubLoading}>COMMIT &amp; PUSH</Button>
+            <p className="text-[10.5px] text-vox-muted font-mono max-w-md">Create repositories on your GitHub, or commit and push this project's working tree straight to the remote — powered by the backend token, no shell needed.</p>
+          </div>
+        </Panel>
+      )}
+
+      <Modal open={repoOpen} onClose={() => setRepoOpen(false)} title="Create Repository" icon="FolderPlus" width={460}>
+        <div className="space-y-3.5">
+          <Field label="Repository Name">
+            <Input value={repoName} onChange={(e) => setRepoName(e.target.value)} placeholder="my-new-project" autoFocus className="font-mono" />
+          </Field>
+          <Field label="Description (optional)">
+            <Input value={repoDesc} onChange={(e) => setRepoDesc(e.target.value)} placeholder="What is this project?" />
+          </Field>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" checked={repoPrivate} onChange={(e) => setRepoPrivate(e.target.checked)} className="accent-cyan-400" />
+            <span className="text-[12px] text-vox-text">Private repository</span>
+          </label>
+          <p className="text-[10.5px] text-vox-dim">Creates the repo on GitHub via the API. Fine-grained tokens cannot create repos — use a classic token with <span className="font-mono">repo</span> scope.</p>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setRepoOpen(false)}>CANCEL</Button>
+          <Button variant="solid" icon="FolderPlus" disabled={!repoName.trim()} onClick={() => { void s.createGithubRepo(repoName.trim(), repoDesc.trim(), repoPrivate); setRepoOpen(false); }}>CREATE</Button>
+        </div>
+      </Modal>
+
+      <Modal open={pushOpen} onClose={() => setPushOpen(false)} title="Commit & Push" icon="GitCommitHorizontal" width={460}>
+        <div className="space-y-3">
+          <Field label="Commit Message">
+            <Input value={pushMsg} onChange={(e) => setPushMsg(e.target.value)} placeholder="chore: commit from VOX-OS" autoFocus className="font-mono" />
+          </Field>
+          <p className="text-[10.5px] text-vox-dim">Runs <span className="font-mono">git add -A</span>, commits, and pushes the current project to its remote (<span className="font-mono">{s.githubUser ?? 'origin'}</span>). Nothing is staged that isn't already in the working tree.</p>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setPushOpen(false)}>CANCEL</Button>
+          <Button variant="solid" icon="GitCommitHorizontal" onClick={() => { void s.pushGithubCommit(pushMsg); setPushOpen(false); }}>COMMIT &amp; PUSH</Button>
+        </div>
+      </Modal>
 
       {connected && s.githubRepos.length > 0 && !detail.repo && (
         <Panel title="Account Activity" icon="Activity" bodyClassName="!p-3">

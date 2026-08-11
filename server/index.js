@@ -12,6 +12,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -411,6 +412,70 @@ const server = http.createServer(async (req, res) => {
       return json(200, { repos: repos.map((r) => ({ name: r.name, full_name: r.full_name, language: r.language, stargazers_count: r.stargazers_count, forks_count: r.forks_count, pushed_at: r.pushed_at, default_branch: r.default_branch })) });
     } catch {
       return json(502, { error: 'GitHub request failed — network error.' });
+    }
+  }
+
+  // ---- GitHub repo creation (dev actions) ----
+  if (method === 'POST' && pathname === '/api/github/repos/create') {
+    const token = getGithubToken();
+    if (!token) return json(502, { error: 'GitHub requires a token — configure it in API Manager or set GITHUB_TOKEN in server/.env. The frontend never holds credentials.' });
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let payload = {};
+    try { payload = JSON.parse(body); } catch { return json(400, { error: 'Invalid JSON' }); }
+    const name = String(payload.name || '').trim();
+    if (!/^[A-Za-z0-9_.-]+$/.test(name)) return json(400, { error: 'Repo name must be letters, numbers, dashes, underscores or dots.', category: 'CONFIGURATION ERROR' });
+    try {
+      const res = await fetch('https://api.github.com/user/repos', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os', Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: String(payload.description || '').slice(0, 200) || undefined, private: !!payload.private, auto_init: false }),
+      });
+      if (res.status === 403) return json(403, { error: 'This token cannot create repositories — fine-grained PATs need a classic token with repo scope (or create it on github.com/new).', category: 'PERMISSION ERROR' });
+      if (res.status === 422) return json(422, { error: 'Repo name already taken or invalid.', category: 'CONFIGURATION ERROR' });
+      if (!res.ok) return json(502, { error: `GitHub API error (HTTP ${res.status})` });
+      const data = await res.json();
+      console.log(`[VOX] GitHub repo created: ${data.full_name}`);
+      return json(200, { ok: true, repo: data.full_name, clone_url: data.clone_url });
+    } catch {
+      return json(502, { error: 'GitHub request failed — network error.' });
+    }
+  }
+
+  // ---- git commit + push from the workspace (dev actions) ----
+  if (method === 'POST' && pathname === '/api/github/push') {
+    const token = getGithubToken();
+    if (!token) return json(502, { error: 'GitHub requires a token — configure it in API Manager or set GITHUB_TOKEN in server/.env.' });
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    let payload = {};
+    try { payload = JSON.parse(body); } catch { return json(400, { error: 'Invalid JSON' }); }
+    const message = String(payload.message || '').trim() || 'chore: commit from VOX-OS';
+    const root = path.join(__dirname, '..');
+    const run = (cmd, args) => new Promise((resolve) => {
+      execFile(cmd, args, { cwd: root, timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => resolve({ err, stdout: String(stdout), stderr: String(stderr) }));
+    });
+    try {
+      const remote = await run('git', ['remote', 'get-url', 'origin']);
+      if (remote.err || !remote.stdout.trim()) return json(400, { error: 'No git remote configured — create the repo first (CREATE REPO) or run: git remote add origin <url>', category: 'CONFIGURATION ERROR' });
+      const branch = (await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim() || 'main';
+      const me = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os' } }).then((r) => r.json()).catch(() => null);
+      const login = me?.login ?? 'vox-os';
+      // one-shot authenticated URL so the stored remote is never mutated with a token
+      const authUrl = remote.stdout.trim().replace(/^https:\/\//, `https://x-access-token:${token}@`);
+      const add = await run('git', ['add', '-A']);
+      if (add.err) return json(502, { error: `git add failed: ${add.stderr.slice(0, 300)}` });
+      const commit = await run('git', ['-c', `user.name=${login}`, '-c', `user.email=${login}@users.noreply.github.com`, 'commit', '-m', message]);
+      if (commit.err) {
+        const msg = commit.stderr.toLowerCase();
+        if (msg.includes('nothing to commit')) return json(200, { ok: true, skipped: 'nothing to commit', output: commit.stderr.trim() });
+        return json(502, { error: `git commit failed: ${commit.stderr.slice(0, 300)}` });
+      }
+      const push = await run('git', ['push', authUrl, `HEAD:${branch}`]);
+      if (push.err) return json(502, { error: `git push failed: ${push.stderr.slice(0, 300)}` });
+      return json(200, { ok: true, committed: true, branch, output: `${commit.stdout}${push.stdout}`.trim() });
+    } catch (e) {
+      return json(502, { error: `Git operation failed: ${e instanceof Error ? e.message : e}` });
     }
   }
 

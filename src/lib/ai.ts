@@ -221,6 +221,36 @@ export async function fetchGithubRepos(): Promise<{ repos: { name: string; full_
   }
 }
 
+export async function createGithubRepo(name: string, description: string, isPrivate: boolean): Promise<{ ok: boolean; repo?: string; error?: string; category?: string }> {
+  try {
+    const res = await fetch(`${BASE}/github/repos/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, private: isPrivate }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error ?? `HTTP ${res.status}`, category: data.category };
+    return { ok: true, repo: data.repo };
+  } catch {
+    return { ok: false, error: 'Backend unreachable — start the VOX server.', category: 'NETWORK ERROR' };
+  }
+}
+
+export async function pushGithubCommit(message: string): Promise<{ ok: boolean; skipped?: string; branch?: string; error?: string; category?: string }> {
+  try {
+    const res = await fetch(`${BASE}/github/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error ?? `HTTP ${res.status}`, category: data.category };
+    return { ok: true, skipped: data.skipped, branch: data.branch };
+  } catch {
+    return { ok: false, error: 'Backend unreachable — start the VOX server.', category: 'NETWORK ERROR' };
+  }
+}
+
 export interface GithubBranch { name: string; sha: string; protected: boolean }
 export interface GithubCommit { sha: string; message: string; author: string; date: string; url: string }
 export interface GithubIssue { number: number; title: string; state: string; user: string; created_at: string; comments: number; url: string }
