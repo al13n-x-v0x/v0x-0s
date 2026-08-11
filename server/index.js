@@ -467,12 +467,15 @@ const server = http.createServer(async (req, res) => {
       if (add.err) return json(502, { error: `git add failed: ${add.stderr.slice(0, 300)}` });
       const commit = await run('git', ['-c', `user.name=${login}`, '-c', `user.email=${login}@users.noreply.github.com`, 'commit', '-m', message]);
       if (commit.err) {
-        const msg = commit.stderr.toLowerCase();
-        if (msg.includes('nothing to commit')) return json(200, { ok: true, skipped: 'nothing to commit', output: commit.stderr.trim() });
-        return json(502, { error: `git commit failed: ${commit.stderr.slice(0, 300)}` });
+        // "nothing to commit" may land on stdout or stderr depending on the git build
+        const msg = (commit.stdout + commit.stderr).toLowerCase();
+        if (msg.includes('nothing to commit')) return json(200, { ok: true, skipped: 'nothing to commit', output: (commit.stdout + commit.stderr).trim() });
+        return json(502, { error: `git commit failed: ${(commit.stderr || commit.stdout).slice(0, 300)}` });
       }
       const push = await run('git', ['push', authUrl, `HEAD:${branch}`]);
-      if (push.err) return json(502, { error: `git push failed: ${push.stderr.slice(0, 300)}` });
+      if (push.err) return json(502, { error: `git push failed: ${(push.stderr || push.stdout).slice(0, 300)}` });
+      // sync the local tracking ref (push went to a one-shot URL, not the configured remote)
+      await run('git', ['fetch', 'origin']);
       return json(200, { ok: true, committed: true, branch, output: `${commit.stdout}${push.stdout}`.trim() });
     } catch (e) {
       return json(502, { error: `Git operation failed: ${e instanceof Error ? e.message : e}` });
