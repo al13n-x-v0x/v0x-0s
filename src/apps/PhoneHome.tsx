@@ -2,8 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { useVox } from '../lib/store';
 import { LAUNCHER } from '../lib/constants';
 import { Icon } from '../components/ui';
-import { fmtClock, fmtDate, fmtBytes } from '../lib/fmt';
+import { fmtClock, fmtDate, fmtBytes, timeAgo } from '../lib/fmt';
+import { fetchGithubCommits, type GithubCommit } from '../lib/ai';
 import { sfx } from '../lib/sounds';
+
+function fmtSession(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
+  return `${sec}s`;
+}
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -33,6 +44,28 @@ export function PhoneHome() {
 
   // ---- quick actions: persisted order, editable ----------
   const [order, setOrder] = useState<string[]>(() => quickOf(s.settings.phoneQuick));
+  const [commits, setCommits] = useState<GithubCommit[] | null>(null);
+  const [commitsLoading, setCommitsLoading] = useState(false);
+
+  // recent-commits feed: merge the latest commits of the top repos
+  useEffect(() => {
+    if (!s.settings.githubConnected || !s.githubRepos.length) return;
+    let cancelled = false;
+    setCommitsLoading(true);
+    const repos = s.githubRepos.slice(0, 2).map((r) => r.full_name);
+    Promise.all(repos.map((r) => fetchGithubCommits(r)))
+      .then((results) => {
+        if (cancelled) return;
+        const all = results
+          .flatMap((r) => (r.ok ? r.data : []))
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 6);
+        setCommits(all);
+        setCommitsLoading(false);
+      })
+      .catch(() => { if (!cancelled) setCommitsLoading(false); });
+    return () => { cancelled = true; };
+  }, [s.settings.githubConnected, s.githubRepos]);
   const [editing, setEditing] = useState(false);
   const [picker, setPicker] = useState<{ mode: 'add' | 'swap'; id?: string } | null>(null);
   const [drag, setDrag] = useState<{ id: string; x: number; y: number; w: number } | null>(null);
@@ -135,6 +168,7 @@ export function PhoneHome() {
   };
 
   const quick = order.map((id) => byId(id)).filter(Boolean) as (typeof LAUNCHER[number])[];
+  const sessionMs = performance.now(); // live session uptime (re-renders on the 1s clock)
   const bat = info.battery;
   const batteryPct = bat != null ? Math.round(bat) : null;
   const cpu = last?.cpu ?? 0;
@@ -234,6 +268,32 @@ export function PhoneHome() {
         <Icon name="HeartPulse" size={18} className="text-emerald-300" />
       </button>
 
+      {/* uptime + session ring */}
+      <div className="glass rounded-3xl px-5 py-4 flex items-center gap-4">
+        <div className="relative w-14 h-14 shrink-0">
+          <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+            <circle cx="18" cy="18" r="15.5" fill="none" stroke="rgba(148,163,184,0.12)" strokeWidth="3.5" />
+            <circle
+              cx="18" cy="18" r="15.5" fill="none" stroke="#8b5cf6" strokeWidth="3.5" strokeLinecap="round"
+              strokeDasharray={`${Math.min(sessionMs / (24 * 3600 * 1000), 1) * 97.4} 97.4`}
+              style={{ filter: 'drop-shadow(0 0 5px rgba(139,92,246,0.7))', transition: 'stroke-dasharray 1s linear' }}
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center">
+            <Icon name="Timer" size={14} className="text-violet-300" />
+          </span>
+        </div>
+        <div className="flex-1">
+          <span className="font-display text-[12px] font-bold tracking-[0.18em] text-vox-text uppercase">Session Uptime</span>
+          <p className="mt-1 font-mono text-[20px] font-semibold text-vox-text tabular-nums">{fmtSession(sessionMs)}</p>
+          <p className="mt-0.5 font-mono text-[10px] tracking-[0.14em] text-vox-muted uppercase">system up {info.uptime}</p>
+        </div>
+        <div className="text-right">
+          <span className="font-mono text-[10px] text-vox-dim">24h goal</span>
+          <div className="mt-1 font-mono text-[11px] text-violet-300 tabular-nums">{Math.round(Math.min(sessionMs / (24 * 3600 * 1000), 1) * 100)}%</div>
+        </div>
+      </div>
+
       {/* quick actions */}
       <div>
         <div className="flex items-center justify-between px-1 pb-2">
@@ -300,6 +360,45 @@ export function PhoneHome() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* recent commits feed */}
+      <div>
+        <div className="flex items-center justify-between px-1 pb-2">
+          <span className="font-mono text-[9.5px] tracking-[0.26em] text-vox-dim uppercase">Recent Commits</span>
+          {s.settings.githubConnected && (
+            <button onClick={() => { sfx.command(); setSection('github'); }} className="flex items-center gap-1 text-[10px] font-bold tracking-[0.14em] text-vox-cyan uppercase">
+              GitHub <Icon name="ChevronRight" size={12} />
+            </button>
+          )}
+        </div>
+        {commitsLoading && (
+          <div className="glass rounded-2xl px-4 py-3 space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="skeleton h-8 w-full" />)}
+          </div>
+        )}
+        {!commitsLoading && commits && commits.length > 0 && (
+          <div className="glass rounded-2xl divide-y divide-vox-line overflow-hidden">
+            {commits.map((c) => (
+              <a key={c.sha} href={c.url} target="_blank" rel="noreferrer" className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04]">
+                <span className="w-7 h-7 rounded-full bg-cyan-400/10 border border-vox-cyan/30 text-vox-cyan flex items-center justify-center shrink-0 mt-0.5">
+                  <Icon name="GitCommitHorizontal" size={13} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[12.5px] font-medium text-vox-text truncate">{c.message}</span>
+                  <span className="block text-[10px] text-vox-dim truncate">{c.author} · {timeAgo(new Date(c.date).getTime())}</span>
+                </span>
+                <Icon name="ExternalLink" size={12} className="text-vox-dim shrink-0 mt-1.5" />
+              </a>
+            ))}
+          </div>
+        )}
+        {!commitsLoading && commits !== null && commits.length === 0 && (
+          <div className="glass rounded-2xl px-4 py-4 text-center font-mono text-[10px] tracking-[0.16em] text-vox-dim uppercase">No commits found</div>
+        )}
+        {!s.settings.githubConnected && (
+          <div className="glass rounded-2xl px-4 py-4 text-center font-mono text-[10px] tracking-[0.16em] text-vox-dim uppercase">Connect GitHub to see commits</div>
+        )}
       </div>
 
       {/* footer */}
