@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { useVox } from '../lib/store';
 import type { LogEvent, SectionId, Severity } from '../lib/types';
 import { NAV, SYS_NAV } from '../lib/constants';
-import { Badge, Button, EmptyState, Icon, Panel, StatusDot, Toggle } from '../components/ui';
+import { Badge, Button, EmptyState, Icon, Input, Panel, StatusDot, Toggle } from '../components/ui';
 import { fmtBytes, fmtDuration, timeAgo, fmtTime } from '../lib/fmt';
 import { sfx } from '../lib/sounds';
 
@@ -513,62 +513,127 @@ export function SystemInfo() {
 // ==================== DESKTOP AGENT ====================
 export function DesktopAgent() {
   const s = useVox();
-  const capabilities = [
-    { id: 'SYSTEM_STATS', desc: 'CPU, RAM, GPU, disk, network, battery telemetry', ok: true },
-    { id: 'PROCESS_LIST', desc: 'Read and end processes with confirmation', ok: true },
-    { id: 'FILES', desc: 'Real filesystem read/write', ok: true },
-    { id: 'TERMINAL', desc: 'Real shell sessions (PowerShell, CMD, Bash, Zsh)', ok: true },
-    { id: 'GIT', desc: 'Real git operations', ok: true },
-    { id: 'PROJECTS', desc: 'Workspace discovery and builds', ok: true },
-    { id: 'VOICE', desc: 'Local speech capture', ok: true },
-    { id: 'BUILD', desc: 'Run project builds locally', ok: true },
-    { id: 'NETWORK', desc: 'Throughput tests', ok: true },
+  const [url, setUrl] = useState('');
+  const [token, setToken] = useState('');
+  const agent = s.agentState;
+  const stats = s.agentStats;
+  const connected = agent.status === 'connected';
+  const caps = [
+    { id: 'SYSTEM_STATS', desc: 'Real CPU, RAM, disk, load, uptime', ok: true },
+    { id: 'NETWORK', desc: 'Real network interface list', ok: true },
+    { id: 'PROCESS_LIST', desc: 'Real running processes', ok: true },
+    { id: 'TERMINAL', desc: 'Real shell sessions (PowerShell, CMD, Bash)', ok: true },
+    { id: 'FILES', desc: 'Real filesystem access', ok: true },
+    { id: 'GPU', desc: 'Real GPU / driver info', ok: true },
   ];
+  const connect = () => void s.connectAgent(url.trim() || undefined, token.trim() || undefined);
   return (
-    <div className="p-5 animate-fade-in max-w-[900px]">
+    <div className="p-5 animate-fade-in max-w-[1000px]">
       <div className="flex items-end justify-between flex-wrap gap-3 mb-5">
         <div>
           <p className="hud-label mb-1.5">LOCAL COMPANION</p>
           <h1 className="font-display text-[22px] font-semibold tracking-[0.06em] uppercase">VOX Desktop Agent</h1>
         </div>
-        <Badge tone={s.systemInfo.agent === 'connected' ? 'green' : 'dim'}><span className={clsx('dot', s.systemInfo.agent === 'connected' ? 'dot-online' : 'dot-dim')} /> {s.systemInfo.agent === 'connected' ? 'CONNECTED' : 'NOT CONNECTED'}</Badge>
+        <Badge tone={connected ? 'green' : agent.status === 'connecting' ? 'amber' : 'dim'}>
+          <span className={clsx('dot', connected ? 'dot-online' : agent.status === 'connecting' ? 'dot-amber' : 'dot-dim')} /> {connected ? 'CONNECTED' : agent.status === 'connecting' ? 'CONNECTING…' : 'NOT CONNECTED'}
+        </Badge>
       </div>
-      <Panel title="Architecture" icon="GitMerge" glow="cyan">
-        <div className="flex items-center justify-center gap-2 font-mono text-[10px] py-4">
-          {['VOX-OS (browser)', 'secure local bridge', 'VOX Desktop Agent', 'OS APIs'].map((st, i) => (
-            <div key={st} className="flex items-center gap-2">
-              <span className="glass-inset px-2.5 py-1.5 text-vox-muted">{st}</span>
-              {i < 3 && <Icon name="ArrowRight" size={12} className="text-vox-dim" />}
+
+      {/* connection panel */}
+      <Panel title="Connection" icon="PlugZap" glow="cyan">
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="glass-inset p-3.5">
+            <p className="hud-label mb-2">AUTO (RECOMMENDED)</p>
+            <p className="text-[11px] text-vox-muted mb-3 leading-relaxed">The VOX backend reads the agent config and brokers the connection token. Start the daemon, then connect.</p>
+            <Button variant="cyan" icon="PlugZap" onClick={connect} disabled={agent.status === 'connecting'}>
+              {connected ? 'RECONNECT' : agent.status === 'connecting' ? 'CONNECTING…' : 'CONNECT AGENT'}
+            </Button>
+          </div>
+          <div className="glass-inset p-3.5">
+            <p className="hud-label mb-2">MANUAL</p>
+            <div className="flex gap-2">
+              <Input placeholder="ws://127.0.0.1:8790" value={url} onChange={(e) => setUrl(e.target.value)} className="!text-[10.5px] font-mono" />
             </div>
-          ))}
+            <div className="flex gap-2 mt-2">
+              <Input type="password" placeholder="agent token" value={token} onChange={(e) => setToken(e.target.value)} className="!text-[10.5px] font-mono" />
+              <Button variant="ghost" onClick={connect}>CONNECT</Button>
+            </div>
+          </div>
         </div>
-        <p className="text-[11px] text-vox-muted leading-relaxed text-center">
-          The Desktop Agent is an optional local process for platforms VOX-OS targets (Windows, Linux, Android, BSD, Solaris — not macOS). It exposes controlled capabilities with explicit permissions; there is no unrestricted remote shell.
-        </p>
+        {agent.lastError && <p className="text-[11px] text-amber-300 mt-3 font-mono">⚠ {agent.lastError}</p>}
+        {!connected && !agent.lastError && (
+          <div className="mt-4 glass-inset px-3.5 py-3 font-mono text-[10.5px] text-vox-muted leading-relaxed">
+            <p className="text-vox-text mb-1">START THE DAEMON (in a terminal on this machine):</p>
+            <p className="text-cyan-300">$ node agent/index.js --allow TERMINAL,SYSTEM_STATS,NETWORK</p>
+            <p className="mt-1">— or <span className="text-cyan-300">--allow-all</span> on a trusted dev machine. First run generates the token automatically.</p>
+          </div>
+        )}
       </Panel>
-      <div className="grid md:grid-cols-2 gap-4 mt-4">
-        <Panel title="Exposed capabilities" icon="Blocks" bodyClassName="!p-3">
-          <div className="space-y-1.5">
-            {capabilities.map((c) => (
-              <div key={c.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-white/[0.02]">
-                <Icon name={c.ok ? 'CheckCircle2' : 'Circle'} size={13} className={c.ok ? 'text-emerald-400' : 'text-vox-dim'} />
-                <span className="font-mono text-[10.5px] text-vox-text">{c.id}</span>
-                <span className="ml-auto text-[10px] text-vox-muted text-right">{c.desc}</span>
+
+      {connected && (
+        <>
+          {/* live stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-4">
+            <Stat label="CPU" value={stats.cpu != null ? `${stats.cpu}%` : '—'} tone={stats.cpu != null && stats.cpu > 85 ? 'red' : 'ok'} />
+            <Stat label="RAM" value={stats.memPct != null ? `${stats.memPct}%` : '—'} tone={stats.memPct != null && stats.memPct > 85 ? 'red' : 'ok'} />
+            <Stat label="DISK" value={stats.diskPct != null ? `${stats.diskPct}%` : '—'} tone={stats.diskPct != null && stats.diskPct > 85 ? 'red' : 'ok'} />
+            <Stat label="LOAD" value={stats.load.length ? stats.load[0].toFixed(2) : '—'} />
+            <Stat label="UPTIME" value={stats.uptime != null ? `${Math.floor(stats.uptime / 3600)}h` : '—'} />
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            <Panel title="Capabilities & permissions" icon="Blocks" bodyClassName="!p-3">
+              <div className="space-y-1.5">
+                {caps.map((c) => {
+                  const state = agent.perms[c.id] ?? 'unknown';
+                  return (
+                    <div key={c.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-white/[0.02]">
+                      <Icon name={state === 'allowed' ? 'CheckCircle2' : state === 'prompt' ? 'ShieldQuestion' : 'Circle'} size={13} className={state === 'allowed' ? 'text-emerald-400' : state === 'prompt' ? 'text-amber-300' : 'text-vox-dim'} />
+                      <span className="font-mono text-[10.5px] text-vox-text">{c.id}</span>
+                      <span className="ml-auto text-[10px] text-vox-muted text-right hidden sm:block">{c.desc}</span>
+                      <Badge tone={state === 'allowed' ? 'green' : state === 'prompt' ? 'amber' : 'dim'}>{state === 'allowed' ? 'ALLOWED' : state === 'prompt' ? 'ASK ON USE' : state === 'denied' ? 'DENIED' : 'UNKNOWN'}</Badge>
+                      {state !== 'allowed' && <Button size="xs" variant="ghost" onClick={() => void s.agentRequestPermission(c.id)}>REQUEST</Button>}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </Panel>
+            <Panel title="Agent status" icon="Info" bodyClassName="!p-3.5">
+              <div className="space-y-2 text-[11.5px] font-mono text-vox-muted">
+                <p>VERSION <span className="text-vox-text">{agent.version}</span></p>
+                <p>HOST <span className="text-vox-text">{agent.os?.hostname ?? '—'}</span></p>
+                <p>PLATFORM <span className="text-vox-text">{agent.os?.platform}/{agent.os?.arch}</span></p>
+                <p>RELEASE <span className="text-vox-text">{agent.os?.release}</span></p>
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button variant="danger" size="xs" icon="Unplug" onClick={() => s.disconnectAgent()}>DISCONNECT</Button>
+                <Button variant="ghost" size="xs" icon="RefreshCw" onClick={() => void s.connectAgent()}>RECONNECT</Button>
+              </div>
+            </Panel>
           </div>
-        </Panel>
-        <Panel title="How the web shell behaves without it" icon="Info" bodyClassName="!p-3.5">
-          <div className="space-y-2 text-[11.5px] text-vox-muted leading-relaxed">
-            <p>• Terminal runs in a labeled <span className="text-amber-300">SIMULATED</span> sandbox</p>
-            <p>• System telemetry shows <span className="text-amber-300">DEMO</span> for values the browser cannot read</p>
-            <p>• Files edit the in-browser workspace tree</p>
-            <p>• Process termination is blocked with a clear explanation</p>
-            <p>• Every gap is labeled — nothing is faked</p>
-          </div>
-          <div className="mt-4"><Button variant="cyan" size="xs" icon="Bot" onClick={() => s.setSection('settings')}>AGENT PERMISSIONS →</Button></div>
-        </Panel>
-      </div>
+        </>
+      )}
+
+      {/* how it behaves without the agent */}
+      <Panel title="How the web shell behaves without it" icon="Info" bodyClassName="!p-3.5" className="mt-4">
+        <div className="space-y-2 text-[11.5px] text-vox-muted leading-relaxed">
+          <p>• Terminal runs in a labeled <span className="text-amber-300">SIMULATED</span> sandbox</p>
+          <p>• System telemetry shows <span className="text-amber-300">DEMO</span> for values the browser cannot read</p>
+          <p>• Files edit the in-browser workspace tree</p>
+          <p>• Health checks that need OS data read <span className="text-amber-300">UNAVAILABLE</span></p>
+          <p>• Every gap is labeled — nothing is faked</p>
+        </div>
+        <div className="mt-4"><Button variant="cyan" size="xs" icon="Bot" onClick={() => s.setSection('settings')}>AGENT PERMISSIONS →</Button></div>
+      </Panel>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'red' }) {
+  return (
+    <div className="glass-inset px-3 py-2.5">
+      <p className="hud-label mb-1">{label}</p>
+      <p className={clsx('font-mono text-[15px]', tone === 'red' ? 'text-red-300' : 'text-emerald-300')}>{value}</p>
     </div>
   );
 }

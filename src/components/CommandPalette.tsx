@@ -81,6 +81,7 @@ export function CommandPalette() {
         [/create backup|back up/, 'Create a backup', () => createBackup()],
         [/export config/, 'Export AI configuration', () => exportAIConfig()],
         [/sync github/, 'Sync GitHub repositories', () => void syncGithub()],
+        [/scan.*secret|secret.*scan|security/, 'Open the Security Center', () => setSection('security')],
       ];
       for (const [re, label, run] of nl) {
         if (re.test(q)) add({ id: `nl_${label}`, label, hint: 'VOX ACTION', icon: 'Sparkles', group: 'VOX', run });
@@ -98,6 +99,7 @@ export function CommandPalette() {
       ['Run Tests', 'Test the active project', () => void testProject()],
       ['Open Settings', 'Open system settings', () => setSection('settings')],
       ['View Errors', 'Open the Error Center', () => setSection('errors')],
+      ['Scan for Secrets', 'Open the Security Center', () => setSection('security')],
       ['View Event Log', 'Open the event log', () => setSection('eventlog')],
       ['Create Backup', 'Back up configuration', () => createBackup()],
       ['Run Diagnostics', 'Full auto diagnostics', () => void runDiagnostics()],
@@ -142,7 +144,7 @@ export function CommandPalette() {
       ['API providers', () => setSection('apimanager')],
       ['Voice settings', () => setSection('voice')],
       ['Desktop Agent', () => setSection('agent')],
-      ['Security', () => setSection('errors')],
+      ['Security Center', () => setSection('security')],
     ];
     settings.forEach(([label, run]) => add({ id: `set_${label}`, label, hint: 'SETTINGS', icon: 'Settings', group: 'SETTINGS', run }));
 

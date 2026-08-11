@@ -36,11 +36,21 @@ interface CheckResult {
   score: number;
 }
 
-export function computeChecks(project: Project | null, kind: ScanKind): CheckResult[] {
+export interface AgentHealth {
+  cpu: number | null;
+  memPct: number | null;
+  diskPct: number | null;
+  diskTotal: number | null;
+  uptime: number | null;
+  load: number[];
+}
+
+export function computeChecks(project: Project | null, kind: ScanKind, agent?: AgentHealth | null): CheckResult[] {
   const info = browserInfo();
   const mem = realMemoryUsage();
   const secrets = project ? scanForSecrets(project.fs) : [];
   const out: CheckResult[] = [];
+  const agentOn = !!agent && agent.cpu != null && agent.memPct != null;
 
   const add = (r: CheckResult) => out.push(r);
 
@@ -49,17 +59,18 @@ export function computeChecks(project: Project | null, kind: ScanKind): CheckRes
       id: 'integrity', label: 'System Integrity', status: 'pass', score: 100,
       detail: 'VOX core modules operational. Shell, state, and engines initialized without errors.',
     });
-    add({
-      id: 'memory', label: 'Memory', status: mem.pct == null ? 'unavailable' : mem.pct < 70 ? 'pass' : mem.pct < 90 ? 'warn' : 'error',
-      score: mem.pct == null ? 0 : clamp(100 - mem.pct, 10, 100),
-      detail: mem.pct == null
-        ? 'JS heap metrics unavailable in this browser (Chrome exposes them). REQUIRES DESKTOP AGENT for system RAM.'
-        : `Browser JS heap at ${mem.pct}% (${(mem.used / 1024 / 1024).toFixed(0)} MB used).`,
-    });
-    add({
-      id: 'cpu', label: 'CPU', status: 'unavailable', score: 0,
-      detail: `Detected ${info.cores ?? 'unknown'} logical cores via browser. Live usage requires the Desktop Agent.`,
-    });
+    if (agent?.memPct != null) {
+      const m = agent.memPct;
+      add({ id: 'memory', label: 'Memory', status: m < 70 ? 'pass' : m < 90 ? 'warn' : 'error', score: clamp(100 - m, 10, 100), detail: `Real system RAM at ${m}% (Desktop Agent).` });
+    } else {
+      add({ id: 'memory', label: 'Memory', status: mem.pct == null ? 'unavailable' : mem.pct < 70 ? 'pass' : mem.pct < 90 ? 'warn' : 'error', score: mem.pct == null ? 0 : clamp(100 - mem.pct, 10, 100), detail: mem.pct == null ? 'JS heap metrics unavailable in this browser. REQUIRES DESKTOP AGENT for system RAM.' : `Browser JS heap at ${mem.pct}% (${(mem.used / 1024 / 1024).toFixed(0)} MB used).` });
+    }
+    if (agent?.cpu != null) {
+      const c = agent.cpu;
+      add({ id: 'cpu', label: 'CPU', status: c < 70 ? 'pass' : c < 90 ? 'warn' : 'error', score: clamp(100 - c, 10, 100), detail: `Real CPU usage at ${c}% across ${info.cores ?? '?'} cores (Desktop Agent).` });
+    } else {
+      add({ id: 'cpu', label: 'CPU', status: 'unavailable', score: 0, detail: `Detected ${info.cores ?? 'unknown'} logical cores via browser. Live usage requires the Desktop Agent.` });
+    }
     add({
       id: 'network', label: 'Network', status: !info.online ? 'error' : info.connection.rtt != null && info.connection.rtt > 150 ? 'warn' : 'pass',
       score: !info.online ? 20 : clamp(100 - (info.connection.rtt ?? 0) / 3, 40, 100),
@@ -67,18 +78,23 @@ export function computeChecks(project: Project | null, kind: ScanKind): CheckRes
         ? 'OFFLINE — no network connection detected.'
         : `Connected (${info.connection.effectiveType ?? info.connection.type}). RTT ${info.connection.rtt ?? 'n/a'} ms${info.connection.downlink != null ? `, downlink ${info.connection.downlink} Mb/s` : ''}.`,
     });
-    add({
-      id: 'disk', label: 'Disk Health', status: 'unavailable', score: 0,
-      detail: 'Disk health requires the VOX Desktop Agent.',
-    });
+    if (agent?.diskPct != null) {
+      const d = agent.diskPct;
+      const gb = agent.diskTotal != null ? ` (${(agent.diskTotal / 1024 ** 3).toFixed(0)} GB drive)` : '';
+      add({ id: 'disk', label: 'Disk Health', status: d < 70 ? 'pass' : d < 90 ? 'warn' : 'error', score: clamp(100 - d, 10, 100), detail: `Real disk usage at ${d}%${gb} (Desktop Agent).` });
+    } else {
+      add({ id: 'disk', label: 'Disk Health', status: 'unavailable', score: 0, detail: 'Disk health requires the VOX Desktop Agent.' });
+    }
     add({
       id: 'drivers', label: 'Drivers', status: 'unavailable', score: 0,
       detail: 'Driver inspection requires the VOX Desktop Agent.',
     });
-    add({
-      id: 'startup', label: 'Startup', status: 'unavailable', score: 0,
-      detail: 'Startup programs require the VOX Desktop Agent.',
-    });
+    if (agent?.uptime != null && agent.load.length) {
+      const load = agent.load.map((l) => l.toFixed(2)).join(', ');
+      add({ id: 'startup', label: 'Load & Uptime', status: agent.load[0] < 4 ? 'pass' : 'warn', score: clamp(100 - agent.load[0] * 10, 40, 100), detail: `System up ${Math.floor(agent.uptime / 3600)}h. Load average ${load} (Desktop Agent).` });
+    } else {
+      add({ id: 'startup', label: 'Startup', status: 'unavailable', score: 0, detail: 'Startup programs require the VOX Desktop Agent.' });
+    }
     add({
       id: 'security', label: 'Security', status: secrets.length ? 'error' : 'pass',
       score: secrets.length ? clamp(100 - secrets.length * 12, 20, 90) : 100,

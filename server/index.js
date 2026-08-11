@@ -338,6 +338,26 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ---- Desktop Agent ----
+  // The local Desktop Agent (agent/index.js) writes agent/.vox-agent.json
+  // with its port + token. The backend brokers the token to the web shell so
+  // it can connect directly over WebSocket (loopback only).
+  if (method === 'GET' && pathname === '/api/agent/status') {
+    try {
+      const agentCfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agent', '.vox-agent.json'), 'utf8'));
+      // confirm the daemon actually answers
+      const running = await new Promise((resolve) => {
+        const req = http.get({ host: '127.0.0.1', port: agentCfg.port, path: '/', timeout: 1500 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+      });
+      if (!running) return json(200, { running: false, configured: true, port: agentCfg.port, error: 'Daemon not running — start it with: node agent/index.js' });
+      return json(200, { running: true, configured: true, url: `ws://127.0.0.1:${agentCfg.port}`, token: agentCfg.token, version: agentCfg.version, permissions: agentCfg.permissions });
+    } catch {
+      return json(200, { running: false, configured: false, error: 'No agent config found. Start the daemon: node agent/index.js (it generates a token on first run).' });
+    }
+  }
+
   // ---- GitHub ----
   // Configure a GitHub PAT from the UI — stored server-side (gitignored),
   // never returned to the browser. GITHUB_TOKEN env var also works.
@@ -394,6 +414,71 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ---- GitHub secret scan (recent files of a repo) ----
+  // Scans files changed in the last N commits for secret patterns.
+  // Findings return a redacted line — never the secret value itself.
+  if (method === 'GET' && pathname === '/api/github/scan') {
+    const token = getGithubToken();
+    if (!token) return json(502, { error: 'GitHub requires a token — configure it in API Manager or set GITHUB_TOKEN in server/.env. The frontend never holds credentials.' });
+    const repo = String(url.searchParams.get('repo') || '').trim();
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return json(400, { error: 'Provide a repo as owner/name, e.g. ?repo=octocat/hello-world', category: 'CONFIGURATION ERROR' });
+    const gh = (p, opts = {}) => fetch(`https://api.github.com${p}`, {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'vox-os', Accept: 'application/vnd.github+json', ...opts.headers },
+    });
+    try {
+      // 1. repo metadata → default branch
+      const repoRes = await gh(`/repos/${repo}`);
+      if (repoRes.status === 404) return json(404, { error: `Repo ${repo} not found, or the token cannot see it.` });
+      if (!repoRes.ok) return json(502, { error: `GitHub API error (HTTP ${repoRes.status}) while reading repo.` });
+      const repoData = await repoRes.json();
+      const branch = repoData.default_branch || 'main';
+
+      // 2. recent commits → collect changed file paths (dedup, capped)
+      const commitsRes = await gh(`/repos/${repo}/commits?per_page=8`);
+      if (!commitsRes.ok) return json(502, { error: `GitHub API error (HTTP ${commitsRes.status}) while listing commits.` });
+      const commits = await commitsRes.json();
+      const fileSet = new Set();
+      for (const c of commits.slice(0, 6)) {
+        const detailRes = await gh(`/repos/${repo}/commits/${c.sha}`);
+        if (!detailRes.ok) continue;
+        const detail = await detailRes.json();
+        for (const f of detail.files || []) {
+          const p = String(f.filename || '');
+          if (p && fileSet.size < 30) fileSet.add(p);
+        }
+      }
+      const files = [...fileSet];
+
+      // 3. fetch each file (contents API, base64) and scan it
+      const SKIP = /(^|\/)(node_modules|dist|build|\.git|vendor)\//;
+      const BINARY_EXT = /\.(png|jpe?g|gif|webp|ico|svg|pdf|zip|gz|tar|woff2?|ttf|eot|exe|dll|so|dylib|bin|class|pyc|lock|map|min\.js|min\.css)$/i;
+      const findings = [];
+      let filesScanned = 0;
+      let filesSkipped = 0;
+      for (const fp of files) {
+        if (SKIP.test(fp) || BINARY_EXT.test(fp)) { filesSkipped++; continue; }
+        try {
+          const fRes = await gh(`/repos/${repo}/contents/${encodeURIComponent(fp).replace(/%2F/g, '/')}?ref=${encodeURIComponent(branch)}`);
+          if (!fRes.ok) { filesSkipped++; continue; }
+          const fData = await fRes.json();
+          if (!fData.content || fData.encoding !== 'base64') { filesSkipped++; continue; }
+          const text = Buffer.from(fData.content, 'base64').toString('utf8');
+          if (text.length > 500_000) { filesSkipped++; continue; } // avoid giant generated files
+          const lines = text.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            const hit = matchSecretLine(lines[i]);
+            if (hit) findings.push({ path: fp, line: i + 1, type: hit.type, match: redactLine(lines[i]) });
+          }
+          filesScanned++;
+        } catch { filesSkipped++; }
+      }
+
+      return json(200, { ok: true, repo, branch, filesScanned, filesSkipped, findings, scannedAt: Date.now() });
+    } catch {
+      return json(502, { error: 'GitHub request failed — network error.' });
+    }
+  }
+
   return json(404, { error: 'Not found' });
 });
 
@@ -403,6 +488,32 @@ server.listen(PORT, () => {
   console.log(`[VOX] Groq:   ${getKey('groq') ? 'configured (env/storage)' : 'NOT configured — set GROQ_API_KEY'}`);
   console.log(`[VOX] GitHub: ${process.env.GITHUB_TOKEN ? 'token present' : 'no token — GitHub shows NOT CONNECTED'}`);
 });
+
+// ---- secret pattern matching (kept in sync with src/lib/secrets.ts) ----
+const SECRET_PATTERNS = [
+  { re: /AIza[0-9A-Za-z_-]{20,}/g, type: 'Google API credential' },
+  { re: /gsk_[0-9A-Za-z]{20,}/g, type: 'Groq API credential' },
+  { re: /sk-[0-9A-Za-z]{20,}/g, type: 'Possible API credential' },
+  { re: /sk-ant-[0-9A-Za-z_-]{20,}/g, type: 'Anthropic API credential' },
+  { re: /ghp_[0-9A-Za-z]{20,}/g, type: 'GitHub personal access token' },
+  { re: /github_pat_[0-9A-Za-z_]{20,}/g, type: 'GitHub fine-grained token' },
+  { re: /xox[baprs]-[0-9A-Za-z-]{10,}/g, type: 'Slack token' },
+  { re: /-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----/g, type: 'Private key' },
+  { re: /AKIA[0-9A-Z]{16}/g, type: 'AWS access key' },
+  { re: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, type: 'Possible JWT credential' },
+  { re: /(?:password|passwd|secret|token|api[_-]?key|credential)\s*[:=]\s*["']?[^"'\s,;]{6,}/gi, type: 'Possible credential assignment' },
+];
+function matchSecretLine(line) {
+  for (const p of SECRET_PATTERNS) {
+    p.re.lastIndex = 0;
+    if (p.re.test(line)) return p;
+  }
+  return null;
+}
+function redactLine(line) {
+  const cleaned = line.replace(/=.*$/, '=<redacted>').replace(/:\s*.*$/, ': <redacted>');
+  return cleaned.length > 72 ? cleaned.slice(0, 69) + '…' : cleaned;
+}
 
 // helper: never include secrets in error details
 function safeDetail(body) {

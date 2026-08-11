@@ -30,6 +30,7 @@ import { Gaming } from './apps/Gaming';
 import {
   VoxCoreApp, EventLog, ErrorCenter, Diagnostics, Memory, Backup, CommandHistory, Profile, TaskManager, SystemInfo, DesktopAgent,
 } from './apps/SystemApps';
+import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
   dashboard: () => <Dashboard />,
@@ -52,6 +53,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   voxcore: () => <VoxCoreApp />,
   eventlog: () => <EventLog />,
   errors: () => <ErrorCenter />,
+  security: () => <SecurityCenter />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

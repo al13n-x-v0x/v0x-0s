@@ -114,7 +114,7 @@ export function Dashboard() {
         {/* terminal */}
         <Panel title="Terminal" icon="SquareTerminal" className="col-span-12 lg:col-span-4"
           actions={<>
-            <Badge tone="amber">SIMULATED</Badge>
+            {term.agentMode ? <Badge tone="green">● REAL SHELL</Badge> : <Badge tone="amber">SIMULATED</Badge>}
             <Button size="xs" icon="ExternalLink" onClick={() => s.openApp('terminal')}>OPEN</Button>
           </>}>
           <div className="glass-inset p-3 font-mono text-[11px] leading-[1.7] h-[240px] overflow-y-auto bg-ink-950/70">
@@ -125,7 +125,7 @@ export function Dashboard() {
             ))}
             <div><span className="text-cyan-300">{sessionPrompt(term)}</span> <span className="term-cursor" /></div>
           </div>
-          <p className="text-[9.5px] text-vox-dim mt-2 font-mono">Shell: {term.shell} · real execution requires Desktop Agent</p>
+          <p className="text-[9.5px] text-vox-dim mt-2 font-mono">Shell: {term.shell} · {term.agentMode ? 'real execution via Desktop Agent' : 'real execution requires Desktop Agent'}</p>
         </Panel>
 
         {/* VOX AI */}

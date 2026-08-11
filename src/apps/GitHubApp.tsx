@@ -150,6 +150,7 @@ function RepoCard({ r }: { r: GithubRepo }) {
         <Button size="xs" icon="GitCommitHorizontal" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'COMMITS', body: `Commit history for ${r.full_name} loads from the GitHub API on demand.` })}>COMMITS</Button>
         <Button size="xs" icon="CircleDot" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'ISSUES', body: `Issue list for ${r.full_name} loads from the GitHub API on demand.` })}>ISSUES</Button>
         <Button size="xs" variant="ghost" icon="GitPullRequest" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'PULL REQUESTS', body: `PRs for ${r.full_name} load from the GitHub API on demand.` })}>PR</Button>
+        <Button size="xs" variant="ghost" icon="SearchCheck" onClick={() => { s.setSection('security'); void s.scanGithubRepo(r.full_name); }}>SCAN SECRETS</Button>
         <Button size="xs" variant="ghost" icon="Download" onClick={() => s.pushNotification({ category: 'GITHUB', severity: 'info', title: 'CLONE', body: `Cloning requires the Desktop Agent to write to disk.` })}>CLONE</Button>
       </div>
     </div>

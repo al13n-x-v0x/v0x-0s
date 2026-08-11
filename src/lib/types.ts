@@ -124,6 +124,8 @@ export interface TerminalSession {
   cwd: string[];
   history: { input?: string; output?: string; kind: 'in' | 'out' | 'err' | 'sys'; exitCode?: number }[];
   prompt: string;
+  agentSessionId?: string;
+  agentMode?: boolean;
 }
 
 // ---------- AI ----------

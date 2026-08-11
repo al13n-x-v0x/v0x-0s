@@ -221,6 +221,35 @@ export async function fetchGithubRepos(): Promise<{ repos: { name: string; full_
   }
 }
 
+export interface GithubSecretFinding {
+  path: string;
+  line: number;
+  type: string;
+  match: string; // redacted line — never the secret value
+}
+
+export interface GithubScanResult {
+  ok: boolean;
+  repo: string;
+  branch: string;
+  filesScanned: number;
+  filesSkipped: number;
+  findings: GithubSecretFinding[];
+  scannedAt: number;
+  error?: string;
+}
+
+export async function scanGithubRepo(repo: string): Promise<GithubScanResult> {
+  try {
+    const res = await fetch(`${BASE}/github/scan?repo=${encodeURIComponent(repo)}`);
+    const data = await res.json();
+    if (!res.ok) return { ok: false, repo, branch: '', filesScanned: 0, filesSkipped: 0, findings: [], scannedAt: Date.now(), error: data.error ?? `HTTP ${res.status}` };
+    return data as GithubScanResult;
+  } catch {
+    return { ok: false, repo, branch: '', filesScanned: 0, filesSkipped: 0, findings: [], scannedAt: Date.now(), error: 'Backend unreachable — start the VOX server.' };
+  }
+}
+
 // ============================================================
 // DEMO ASSISTANT — clearly labeled preview responses.
 // Only used when no provider is configured and demo mode is on.

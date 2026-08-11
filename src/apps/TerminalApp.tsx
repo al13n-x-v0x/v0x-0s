@@ -58,8 +58,8 @@ export function TerminalApp() {
           <Icon name="Plus" size={13} />
         </button>
         <div className="ml-auto flex items-center gap-2 pr-2">
-          <Badge tone="amber">{showSim ? 'SIMULATED' : 'SANDBOX'}</Badge>
-          {agent === 'connected' ? <Badge tone="green">● AGENT CONNECTED</Badge> : <Badge tone="dim">AGENT OFFLINE</Badge>}
+          {session.agentMode ? <Badge tone="green">● REAL SHELL</Badge> : <Badge tone="amber">{showSim ? 'SIMULATED' : 'SANDBOX'}</Badge>}
+          {agent === 'connected' ? <Badge tone="green">AGENT CONNECTED</Badge> : <Badge tone="dim">AGENT OFFLINE</Badge>}
         </div>
       </div>
 

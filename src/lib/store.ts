@@ -12,7 +12,9 @@ import { runCommand, sessionPrompt } from './shell';
 import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
 import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
-import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import { agentClient, type AgentHello, type AgentStats } from './agent';
+import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import type { GithubSecretFinding } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
 import { clamp, maskKey, timeAgo, uid } from './fmt';
@@ -104,11 +106,40 @@ export interface VoxState {
   os: OSInfo;
   roblox: RobloxCompat;
   gpu: GPUInfo;
+  // ---- desktop agent ----
+  agentState: {
+    status: 'disconnected' | 'connecting' | 'connected';
+    version?: string;
+    os?: { platform: string; release: string; arch: string; hostname: string };
+    caps: string[];
+    perms: Record<string, string>;
+    lastError?: string;
+  };
+  agentStats: {
+    cpu: number | null;
+    memPct: number | null;
+    diskPct: number | null;
+    diskTotal: number | null;
+    uptime: number | null;
+    load: number[];
+    hostname: string | null;
+  };
   // ---- github ----
   githubRepos: GithubRepo[];
   githubLoading: boolean;
   githubError: string | null;
   githubUser: string | null;
+  // ---- github secret scan (Security Center) ----
+  githubScan: {
+    status: 'idle' | 'scanning' | 'done' | 'error';
+    repo: string;
+    branch: string;
+    filesScanned: number;
+    filesSkipped: number;
+    findings: GithubSecretFinding[];
+    error: string | null;
+    scannedAt: number | null;
+  };
   // ---- voice ----
   voice: VoiceState;
   // ---- actions ----
@@ -127,6 +158,15 @@ export interface VoxState {
   resetUI: () => void;
   setGameProfile: (p: 'balanced' | 'boost' | 'ultra') => void;
   setGameMode: (on: boolean) => void;
+  connectAgent: (manualUrl?: string, manualToken?: string) => Promise<void>;
+  disconnectAgent: () => void;
+  agentRequestPermission: (perm: string) => Promise<void>;
+  agentSessionInput: (sessionId: string, line: string) => void;
+  wireAgent: (hello: AgentHello) => void;
+  agentOpenSession: (sessionId: string) => Promise<void>;
+  applyAgentStats: (s: AgentStats) => void;
+  agentExecChunk: (m: unknown, kind: 'out' | 'err') => void;
+  agentExecExit: (m: unknown) => void;
   // windows
   openApp: (appId: string) => void;
   closeWindow: (id: string) => void;
@@ -186,6 +226,8 @@ export interface VoxState {
   connectGithub: (token?: string) => Promise<void>;
   disconnectGithub: () => Promise<void>;
   syncGithub: () => Promise<void>;
+  scanGithubRepo: (repo: string) => Promise<void>;
+  clearGithubScan: () => void;
   // voice
   startListening: () => void;
   stopListening: () => void;
@@ -424,10 +466,13 @@ export const useVox = create<VoxState>()(
       os: initialOS,
       roblox: initialRoblox,
       gpu: initialGPU,
+      agentState: { status: 'disconnected', caps: [], perms: {} },
+      agentStats: { cpu: null, memPct: null, diskPct: null, diskTotal: null, uptime: null, load: [], hostname: null },
       githubRepos: [],
       githubLoading: false,
       githubError: null,
       githubUser: null,
+      githubScan: { status: 'idle', repo: '', branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: null, scannedAt: null },
       voice: initialVoice,
 
       // ================= SHELL =================
@@ -448,6 +493,12 @@ export const useVox = create<VoxState>()(
         set({ booting: false, booted: true });
         void get().pingBackendNow();
         void get().refreshSystem();
+        // quietly detect a running Desktop Agent — no error noise if absent
+        fetch('/api/agent/status').then((r) => r.json()).then((st) => {
+          if (st?.running) {
+            void get().connectAgent();
+          }
+        }).catch(() => undefined);
       },
       setOnboardingDone: () => set({ onboardingDone: true }),
       setSection: (s) => {
@@ -716,6 +767,18 @@ export const useVox = create<VoxState>()(
       terminalInput: (id, input) => {
         const s = get().terminalSessions.find((t) => t.id === id);
         if (!s) return;
+        // REAL EXECUTION via the Desktop Agent when connected.
+        if (get().agentState.status === 'connected') {
+          if (!s.agentSessionId) {
+            void get().agentOpenSession(id);
+            // fall through to simulated for this first line if session not ready
+          } else {
+            set({ terminalSessions: get().terminalSessions.map((t) => (t.id === id ? { ...t, history: [...t.history, { kind: 'in', input: input.trim() }] } : t)) });
+            void get().agentSessionInput(id, input);
+            get().recordCommand(input.trim());
+            return;
+          }
+        }
         const project = get().projects.find((pr) => pr.id === get().activeProjectId) ?? get().projects[0];
         const result = runCommand(s, input, {
           project,
@@ -948,7 +1011,7 @@ export const useVox = create<VoxState>()(
           await new Promise((r) => setTimeout(r, 220 + Math.random() * 180));
           i++;
         }
-        const checks = computeChecks(project, kind);
+        const checks = computeChecks(project, kind, get().agentStats);
         const { score, grade } = computeScore(checks);
         const categories: HealthCategory[] = checks.map((c) => ({ id: c.id, label: c.label, status: c.status, detail: c.detail, score: c.score }));
         set({
@@ -1007,6 +1070,171 @@ export const useVox = create<VoxState>()(
         get().logEvent('GITHUB', `Synchronized ${repos.length} repositories`, 'success');
         get().pushNotification({ category: 'GITHUB', severity: 'success', title: 'GITHUB SYNCHRONIZED', body: `${repos.length} repositories loaded.` });
         sfx.success();
+      },
+      scanGithubRepo: async (repo) => {
+        set({ githubScan: { ...get().githubScan, status: 'scanning', repo, error: null } });
+        get().logEvent('GITHUB', `Secret scan started on ${repo}`, 'info');
+        const res = await apiScanGithubRepo(repo);
+        if (!res.ok) {
+          set({ githubScan: { status: 'error', repo, branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: res.error ?? 'Scan failed', scannedAt: Date.now() } });
+          get().logEvent('GITHUB', `Secret scan failed on ${repo}: ${res.error ?? 'unknown error'}`, 'error');
+          return;
+        }
+        set({
+          githubScan: {
+            status: 'done', repo: res.repo, branch: res.branch, filesScanned: res.filesScanned, filesSkipped: res.filesSkipped,
+            findings: res.findings, error: null, scannedAt: res.scannedAt,
+          },
+        });
+        get().logEvent('GITHUB', `Secret scan of ${repo}: ${res.filesScanned} files, ${res.findings.length} finding(s)`, res.findings.length ? 'warning' : 'success');
+        if (res.findings.length) {
+          get().pushNotification({ category: 'SECURITY', severity: 'warning', title: 'SECRETS FOUND', body: `${res.findings.length} possible secret(s) in ${repo} — review in Security Center.` });
+          get().addError({ source: 'SECURITY', message: `${res.findings.length} possible secret(s) in GitHub repo ${repo}`, detail: `Scan of ${res.filesScanned} recent files on ${res.branch}. Values are redacted.`, severity: 'warning' });
+        } else {
+          get().pushNotification({ category: 'SECURITY', severity: 'success', title: 'SECRET SCAN CLEAN', body: `No secret patterns in ${repo} recent files.` });
+        }
+        sfx.success();
+      },
+      clearGithubScan: () => set({ githubScan: { status: 'idle', repo: '', branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: null, scannedAt: null } }),
+
+      // ================= DESKTOP AGENT =================
+      connectAgent: async (manualUrl, manualToken) => {
+        set({ agentState: { ...get().agentState, status: 'connecting', lastError: undefined } });
+        let url = manualUrl;
+        let token = manualToken;
+        if (!url || !token) {
+          // broker via the VOX backend, which reads agent/.vox-agent.json
+          try {
+            const res = await fetch('/api/agent/status');
+            const st = await res.json();
+            if (!st.running) {
+              set({ agentState: { ...get().agentState, status: 'disconnected', lastError: st.error || 'Agent daemon not running.' } });
+              return;
+            }
+            url = st.url;
+            token = st.token;
+          } catch {
+            set({ agentState: { ...get().agentState, status: 'disconnected', lastError: 'Could not reach the VOX backend to discover the agent. Start node server/index.js, or enter the agent URL + token manually.' } });
+            return;
+          }
+        }
+        if (!url || !token) {
+          set({ agentState: { ...get().agentState, status: 'disconnected', lastError: 'Agent URL and token are required. Start node server/index.js for auto-discovery, or enter them manually.' } });
+          return;
+        }
+        try {
+          const hello = await agentClient.connect(url, token);
+          get().wireAgent(hello);
+        } catch (e) {
+          set({ agentState: { ...get().agentState, status: 'disconnected', lastError: e instanceof Error ? e.message : 'Agent connection failed' } });
+        }
+      },
+      disconnectAgent: () => {
+        agentClient.disconnect();
+        set({
+          agentState: { status: 'disconnected', caps: [], perms: {} },
+          agentStats: { cpu: null, memPct: null, diskPct: null, diskTotal: null, uptime: null, load: [], hostname: null },
+          systemInfo: { ...get().systemInfo, agent: 'disconnected' },
+          terminalSessions: get().terminalSessions.map((t) => ({ ...t, agentMode: false, agentSessionId: undefined })),
+        });
+        get().logEvent('SYSTEM', 'Desktop Agent disconnected', 'warning');
+      },
+      agentRequestPermission: async (perm) => {
+        try {
+          const ok = await agentClient.requestPermission(perm);
+          const perms = { ...get().agentState.perms, [perm]: ok ? 'allowed' : 'denied' };
+          set({ agentState: { ...get().agentState, perms } });
+          get().pushNotification({ category: 'SYSTEM', severity: ok ? 'success' : 'warning', title: 'AGENT PERMISSION', body: `${perm} ${ok ? 'GRANTED' : 'DENIED'} — check the agent console.` });
+        } catch { /* agent offline */ }
+      },
+      agentSessionInput: (sessionId, line) => {
+        const session = get().terminalSessions.find((t) => t.id === sessionId);
+        if (!session?.agentSessionId) return;
+        void agentClient.execInput(session.agentSessionId, line + '\n').catch(() => undefined);
+      },
+      wireAgent: (hello: AgentHello) => {
+        set({
+          agentState: {
+            status: 'connected', version: hello.version, os: hello.os, caps: hello.caps, perms: hello.perms, lastError: undefined,
+          },
+          systemInfo: { ...get().systemInfo, agent: 'connected' },
+        });
+        get().logEvent('SYSTEM', `Desktop Agent connected · v${hello.version} · ${hello.os.platform}/${hello.os.arch}`, 'success');
+        get().pushNotification({ category: 'SYSTEM', severity: 'success', title: 'DESKTOP AGENT CONNECTED', body: `Real system data and shell execution enabled on ${hello.os.hostname}.` });
+        sfx.success();
+        // subscribe to live stats + open real shell sessions for existing terminals
+        agentClient.subscribe(2000).catch(() => undefined);
+        void agentClient.stats().then((s) => get().applyAgentStats(s)).catch(() => undefined);
+        for (const t of get().terminalSessions) void get().agentOpenSession(t.id);
+        // event wiring
+        agentClient.on('event:exec_out', (m) => get().agentExecChunk(m, 'out'));
+        agentClient.on('event:exec_err', (m) => get().agentExecChunk(m, 'err'));
+        agentClient.on('event:exec_exit', (m) => get().agentExecExit(m));
+        agentClient.on('event:stats', (m) => { const d = (m as { data: AgentStats }).data; if (d) get().applyAgentStats(d); });
+        agentClient.on('status', (connected) => {
+          if (!connected) set({ agentState: { ...get().agentState, status: 'disconnected', lastError: 'Connection lost — agent daemon stopped?' }, systemInfo: { ...get().systemInfo, agent: 'disconnected' } });
+        });
+        agentClient.on('reconnected', (h) => {
+          const hh = h as AgentHello;
+          set({ agentState: { ...get().agentState, status: 'connected', version: hh.version, os: hh.os, caps: hh.caps, perms: hh.perms } });
+          // the old agent's shell sessions died with it — re-open real sessions on the new one
+          for (const t of get().terminalSessions) {
+            if (t.agentMode) void get().agentOpenSession(t.id);
+          }
+        });
+      },
+      agentOpenSession: async (sessionId) => {
+        const session = get().terminalSessions.find((t) => t.id === sessionId);
+        if (!session) return;
+        // Always attempt exec_open: a reloaded page may carry a stale agentSessionId
+        // from a previous agent process whose sessions no longer exist.
+        try {
+          await agentClient.execOpen(sessionId, session.shell, undefined);
+          set({ terminalSessions: get().terminalSessions.map((t) => (t.id === sessionId ? { ...t, agentSessionId: sessionId, agentMode: true } : t)) });
+          get().logEvent('SYSTEM', `Real ${session.shell} session opened via Desktop Agent`, 'info');
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '';
+          if (msg.includes('already open')) {
+            // reconnecting to the same agent — the session survived, keep it
+            set({ terminalSessions: get().terminalSessions.map((t) => (t.id === sessionId ? { ...t, agentSessionId: sessionId, agentMode: true } : t)) });
+            return;
+          }
+          set({ terminalSessions: get().terminalSessions.map((t) => (t.id === sessionId ? { ...t, agentMode: false, agentSessionId: undefined } : t)) });
+          get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'AGENT SHELL DENIED', body: msg || 'Could not open a real shell session.' });
+        }
+      },
+      applyAgentStats: (s: AgentStats) => {
+        set({
+          agentStats: {
+            cpu: s.cpu, memPct: s.mem.pct, diskPct: s.disk.pct, diskTotal: s.disk.total,
+            uptime: s.uptime, load: s.load, hostname: s.hostname,
+          },
+          systemInfo: {
+            ...get().systemInfo,
+            os: `${s.platform === 'win32' ? 'Windows' : s.platform} ${s.release}`, // agent-reported
+            arch: s.arch,
+            cpu: `${get().systemInfo.cores ?? '?'} logical cores · agent reported ${s.arch}`,
+            uptime: `${Math.floor(s.uptime / 3600)}h ${Math.floor((s.uptime % 3600) / 60)}m (agent)`,
+            hostname: s.hostname,
+          },
+        });
+      },
+      agentExecChunk: (m: unknown, kind: 'out' | 'err') => {
+        const msg = m as { id: string; data: string };
+        if (!msg?.data) return;
+        set({
+          terminalSessions: get().terminalSessions.map((t) =>
+            t.id === msg.id && t.agentMode ? { ...t, history: [...t.history, { kind, output: msg.data }] } : t,
+          ),
+        });
+      },
+      agentExecExit: (m: unknown) => {
+        const msg = m as { id: string; code: number };
+        set({
+          terminalSessions: get().terminalSessions.map((t) =>
+            t.id === msg.id && t.agentMode ? { ...t, history: [...t.history, { kind: 'sys' as const, output: `[agent] process exited with code ${msg.code}` }], agentSessionId: undefined } : t,
+          ),
+        });
       },
 
       // ================= VOICE =================
