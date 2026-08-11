@@ -26,6 +26,7 @@ export const SYS_NAV: NavItem[] = [
   { id: 'eventlog', label: 'Event Log', icon: 'ListTree' },
   { id: 'errors', label: 'Error Center', icon: 'TriangleAlert' },
   { id: 'security', label: 'Security Center', icon: 'ShieldCheck' },
+  { id: 'recon', label: 'Recon Lab', icon: 'Radar' },
   { id: 'remote', label: 'Mobile Remote', icon: 'Smartphone' },
   { id: 'diagnostics', label: 'Diagnostics', icon: 'Stethoscope' },
   { id: 'voice', label: 'Voice Engine', icon: 'Mic' },

@@ -35,7 +35,8 @@ export type SectionId =
   | 'profile'
   | 'history'
   | 'security'
-  | 'remote';
+  | 'remote'
+  | 'recon';
 
 export interface NavItem {
   id: SectionId;

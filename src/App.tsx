@@ -31,6 +31,7 @@ import {
   VoxCoreApp, EventLog, ErrorCenter, Diagnostics, Memory, Backup, CommandHistory, Profile, TaskManager, SystemInfo, DesktopAgent,
 } from './apps/SystemApps';
 import { MobileRemote } from './apps/MobileRemote';
+import { ReconLab } from './apps/ReconLab';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -55,6 +56,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   eventlog: () => <EventLog />,
   errors: () => <ErrorCenter />,
   security: () => <SecurityCenter />,
+  recon: () => <ReconLab />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

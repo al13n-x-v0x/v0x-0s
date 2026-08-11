@@ -175,6 +175,7 @@ export interface VoxState {
   agentRequestPermission: (perm: string) => Promise<void>;
   agentAllowAll: () => Promise<void>;
   agentSessionInput: (sessionId: string, line: string) => void;
+  agentRun: (command: string, timeoutMs?: number) => Promise<{ ok: boolean; output: string }>;
   wireAgent: (hello: AgentHello) => void;
   agentOpenSession: (sessionId: string) => Promise<void>;
   applyAgentStats: (s: AgentStats) => void;
@@ -1390,6 +1391,43 @@ export const useVox = create<VoxState>()(
             t.id === msg.id && t.agentMode ? { ...t, history: [...t.history, { kind: 'sys' as const, output: `[agent] process exited with code ${msg.code}` }], agentSessionId: undefined } : t,
           ),
         });
+      },
+      // run a command on the host through the Desktop Agent and collect its output
+      agentRun: async (command, timeoutMs = 45000) => {
+        const st = get().agentState;
+        if (st.status !== 'connected') return { ok: false, output: 'AGENT NOT CONNECTED — start the Desktop Agent on the host machine.' };
+        get().newTerminal(get().settings.defaultShell);
+        const sid = get().terminalActive;
+        const t = get().terminalSessions.find((x) => x.id === sid);
+        if (t && !t.agentSessionId) await get().agentOpenSession(sid).catch(() => undefined);
+        get().agentSessionInput(sid, command);
+        const started = Date.now();
+        let lastLen = -1;
+        let quietSince = Date.now();
+        while (Date.now() - started < timeoutMs) {
+          const s = get().terminalSessions.find((x) => x.id === sid);
+          const out = (s?.history ?? []).filter((h) => h.kind === 'out' || h.kind === 'err').map((h) => h.output).join('');
+          const len = out.length;
+          if (len !== lastLen) { lastLen = len; quietSince = Date.now(); }
+          // interactive shells never exit; completion = trailing prompt + a quiet beat
+          const trimmed = out.trimEnd();
+          const atPrompt = /(PS [^>]*>|\$|#|>)\s*$/.test(trimmed);
+          const quiet = Date.now() - quietSince > 1200;
+          if (len > 0 && quiet && (atPrompt || Date.now() - started > 4000)) {
+            // strip echoed prompts + the echoed command line, keep the results
+            const cleaned = out
+              .split(/\r?\n/)
+              .map((l) => l.replace(/^PS [^>]*> ?/, '').trim())
+              .filter(Boolean)
+              .slice(1)
+              .join('\n');
+            return { ok: true, output: cleaned || '(no output)' };
+          }
+          await new Promise((r) => setTimeout(r, 250));
+        }
+        const s = get().terminalSessions.find((x) => x.id === sid);
+        const partial = (s?.history ?? []).filter((h) => h.kind === 'out' || h.kind === 'err').map((h) => h.output).join('').replace(/\r/g, '').trim();
+        return { ok: false, output: `TIMED OUT after ${Math.round(timeoutMs / 1000)}s. Partial output:\n${partial || '(none)'}` };
       },
 
       // ================= VOICE =================

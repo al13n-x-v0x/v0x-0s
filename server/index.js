@@ -482,6 +482,31 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ---- Recon: subdomain enumeration via DNS dictionary brute-force (dns.google DoH, free, no key) ----
+  if (method === 'GET' && pathname === '/api/recon/subdomains') {
+    const domain = String(url.searchParams.get('domain') || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!/^[a-z0-9.-]+$/.test(domain) || !domain.includes('.')) return json(400, { error: 'Provide a valid domain, e.g. ?domain=example.com', category: 'CONFIGURATION ERROR' });
+    const candidates = ['www', 'api', 'app', 'dev', 'dev2', 'staging', 'stage', 'test', 'qa', 'beta', 'demo', 'alpha', 'sandbox', 'preview', 'internal', 'admin', 'portal', 'dashboard', 'console', 'panel', 'manage', 'manager', 'mail', 'smtp', 'imap', 'pop', 'mx', 'ftp', 'sftp', 'ssh', 'git', 'cvs', 'svn', 'ci', 'cd', 'jenkins', 'gitlab', 'github', 'bitbucket', 'jira', 'confluence', 'wiki', 'docs', 'help', 'support', 'status', 'health', 'metrics', 'grafana', 'kibana', 'prometheus', 'sentry', 'log', 'logs', 'monitor', 'monitoring', 'vpn', 'remote', 'intranet', 'extranet', 'office', 'owa', 'exchange', 'webmail', 'cpanel', 'web', 'www2', 'm', 'mobile', 'cdn', 'static', 'assets', 'img', 'images', 'media', 'video', 'files', 'download', 'downloads', 'uploads', 'blog', 'news', 'forum', 'community', 'shop', 'store', 'shopify', 'cart', 'checkout', 'pay', 'payments', 'billing', 'secure', 'auth', 'login', 'sso', 'oauth', 'accounts', 'user', 'users', 'profile', 'search', 'api2', 'ws', 'socket', 'stream', 'live', 'play', 'game', 'games', 'cdn2', 'edge', 'proxy', 'gateway', 'db', 'database', 'mysql', 'postgres', 'redis', 'mongo', 'elastic', 'es', 'search2', 'ns1', 'ns2', 'ns3', 'dns', 'dns1', 'dns2', 'router', 'gateway2', 'camera', 'cam', 'nas', 'synology', 'plex', 'jellyfin', 'home', 'iot', 'smart', 'hub'];
+    const results = [];
+    const seen = new Set();
+    try {
+      for (const c of candidates) {
+        const name = `${c}.${domain}`;
+        const res = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(name)}&type=A`, { headers: { 'User-Agent': 'vox-os' } });
+        if (!res.ok) continue;
+        const j = await res.json();
+        if (j.Status === 0 && Array.isArray(j.Answer) && j.Answer.length && !seen.has(name)) {
+          seen.add(name);
+          const ips = j.Answer.filter((a) => a.type === 1 || a.type === 5).map((a) => a.data).slice(0, 4);
+          results.push({ name, ips });
+        }
+      }
+      return json(200, { ok: true, domain, subdomains: results });
+    } catch {
+      return json(502, { error: 'dns.google request failed — network error.' });
+    }
+  }
+
   // ---- GitHub repo detail endpoints (branches / commits / issues / pulls) ----
   const ghDetail = async (apiPath, mapFn) => {
     const token = getGithubToken();
