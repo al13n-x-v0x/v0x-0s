@@ -149,6 +149,13 @@ class VoxAgentClient {
   requestPermission(perm: string): Promise<boolean> { return this.request('request_permission', { perm }).then(() => true); }
   allowAll(): Promise<Record<string, string> | null> { return this.request('allow_all').then((m) => (m && m.perms ? m.perms : null)); }
   processes(): Promise<AgentProcess[]> { return this.request('processes').then((m) => m.data ?? []); }
+  appsList(): Promise<{ apps: { name: string; appId: string }[]; note?: string }> {
+    // first PowerShell cold-start can take ~20-30s, so use a generous timeout
+    return this.request('apps_list', {}, 60000).then((m) => m.data ?? { apps: [] });
+  }
+  appsLaunch(appId: string): Promise<{ ok: boolean; reason?: string }> {
+    return this.request('apps_launch', { appId }, 30000).then((m) => ({ ok: !!m.ok, reason: m.reason }));
+  }
   // NOTE: session ids travel in a dedicated `sid` field so they never
   // collide with the request correlation `id` on the wire.
   execOpen(sid: string, shell: string, cwd?: string): Promise<any> { return this.request('exec_open', { sid, shell, cwd }); }

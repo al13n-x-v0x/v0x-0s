@@ -37,7 +37,8 @@ export type SectionId =
   | 'history'
   | 'security'
   | 'remote'
-  | 'recon';
+  | 'recon'
+  | 'myapps';
 
 export interface NavItem {
   id: SectionId;

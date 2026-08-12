@@ -35,6 +35,7 @@ import {
 } from './apps/SystemApps';
 import { MobileRemote } from './apps/MobileRemote';
 import { ReconLab } from './apps/ReconLab';
+import { MyApps } from './apps/MyApps';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -61,6 +62,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   errors: () => <ErrorCenter />,
   security: () => <SecurityCenter />,
   recon: () => <ReconLab />,
+  myapps: () => <MyApps />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

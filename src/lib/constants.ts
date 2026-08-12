@@ -29,6 +29,7 @@ export const SYS_NAV: NavItem[] = [
   { id: 'security', label: 'Security Center', icon: 'ShieldCheck' },
   { id: 'recon', label: 'Recon Lab', icon: 'Radar' },
   { id: 'remote', label: 'Mobile Remote', icon: 'Smartphone' },
+  { id: 'myapps', label: 'My Apps', icon: 'AppWindow', badge: 'REAL' },
   { id: 'diagnostics', label: 'Diagnostics', icon: 'Stethoscope' },
   { id: 'voice', label: 'Voice Engine', icon: 'Mic' },
   { id: 'taskmanager', label: 'Task Manager', icon: 'ListOrdered' },
@@ -96,6 +97,7 @@ export const LAUNCHER: { id: SectionId; label: string; icon: string; tint: [stri
   { id: 'backup', label: 'Backup', icon: 'HardDriveDownload', tint: ['#64748b', '#0ea5e9'], blurb: 'Snapshots' },
   { id: 'history', label: 'History', icon: 'History', tint: ['#14b8a6', '#22d3ee'], blurb: 'Commands' },
   { id: 'profile', label: 'Profile', icon: 'UserRound', tint: ['#8b5cf6', '#d946ef'], blurb: 'Developer card' },
+  { id: 'myapps', label: 'My Apps', icon: 'AppWindow', tint: ['#22d3ee', '#10b981'], blurb: 'Your installed apps' },
   { id: 'voxcore', label: 'VOX Core', icon: 'Orbit', tint: ['#22d3ee', '#3b82f6'], blurb: 'Kernel' },
   { id: 'settings', label: 'Settings', icon: 'Settings', tint: ['#94a3b8', '#64748b'], blurb: 'System settings' },
 ];

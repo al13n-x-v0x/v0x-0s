@@ -44,6 +44,7 @@ const DEFAULT_PERMS = {
   TERMINAL: 'prompt',
   FILES: 'prompt',
   GPU: 'prompt',
+  APPS: 'prompt',            // list + launch installed applications
 };
 
 function loadConfig() {
@@ -170,6 +171,46 @@ function processList() {
   });
 }
 
+// ---- installed applications ------------------------------------------
+function runPwsh(cmd) {
+  return new Promise((resolve) => {
+    try {
+      const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmd]);
+      let out = '';
+      p.stdout.on('data', (d) => (out += d));
+      p.on('close', () => resolve(out.trim()));
+      p.on('error', () => resolve(''));
+    } catch { resolve(''); }
+  });
+}
+
+function appsList() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve({ apps: [], note: 'Installed-app listing is Windows-only (Get-StartApps).' });
+    const cmd = 'Get-StartApps | Select-Object -First 120 Name,AppID | ConvertTo-Json -Compress';
+    runPwsh(cmd).then((out) => {
+      if (!out) return resolve({ apps: [] });
+      try {
+        const arr = JSON.parse(out);
+        const apps = (Array.isArray(arr) ? arr : [arr]).map((r) => ({ name: String(r.Name || ''), appId: String(r.AppID || '') })).filter((a) => a.name && a.appId);
+        resolve({ apps });
+      } catch { resolve({ apps: [] }); }
+    });
+  });
+}
+
+function appsLaunch(appId) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve({ ok: false, reason: 'Launching is Windows-only.' });
+    // UWP / Start-Menu apps launch via the shell:AppsFolder namespace.
+    const child = spawn('explorer.exe', [`shell:AppsFolder\\${appId}`], { detached: true, stdio: 'ignore' });
+    child.unref();
+    child.on('error', (e) => resolve({ ok: false, reason: e.message }));
+    // explorer returns immediately; treat spawn success as launched.
+    resolve({ ok: true });
+  });
+}
+
 // ---- shell sessions -----------------------------------------------------
 function shellFor(kind) {
   if (process.platform === 'win32') {
@@ -248,6 +289,20 @@ wss.on('connection', (ws, req) => {
       if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
       const data = await processList();
       return send(ws, { id: msg.id, ok: true, data });
+    }
+    // ---- installed applications ----
+    if (msg.type === 'apps_list') {
+      const r = await hasPermission('APPS');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const data = await appsList();
+      return send(ws, { id: msg.id, ok: true, data });
+    }
+    if (msg.type === 'apps_launch') {
+      const r = await hasPermission('APPS');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      if (!msg.appId) return send(ws, { id: msg.id, ok: false, reason: 'missing appId' });
+      const res = await appsLaunch(String(msg.appId));
+      return send(ws, { id: msg.id, ok: res.ok, reason: res.reason });
     }
     // ---- shell sessions ----
     if (msg.type === 'exec_open') {

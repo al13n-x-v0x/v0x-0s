@@ -124,6 +124,10 @@ export interface VoxState {
     load: number[];
     hostname: string | null;
   };
+  // ---- installed apps (via Desktop Agent) ----
+  installedApps: { name: string; appId: string }[];
+  appsLoading: boolean;
+  appsError: string | null;
   // ---- github ----
   githubRepos: GithubRepo[];
   githubLoading: boolean;
@@ -251,6 +255,9 @@ export interface VoxState {
   setGithubTab: (tab: 'branches' | 'commits' | 'issues' | 'pulls') => void;
   setGithubBranch: (branch: string) => void;
   closeGithubRepo: () => void;
+  // installed apps
+  loadInstalledApps: () => Promise<void>;
+  launchApp: (appId: string) => Promise<void>;
   // voice
   startListening: () => void;
   stopListening: () => void;
@@ -492,6 +499,9 @@ export const useVox = create<VoxState>()(
       gpu: initialGPU,
       agentState: { status: 'disconnected', caps: [], perms: {} },
       agentStats: { cpu: null, memPct: null, diskPct: null, diskTotal: null, uptime: null, load: [], hostname: null },
+      installedApps: [],
+      appsLoading: false,
+      appsError: null,
       githubRepos: [],
       githubLoading: false,
       githubError: null,
@@ -1308,6 +1318,37 @@ export const useVox = create<VoxState>()(
         const session = get().terminalSessions.find((t) => t.id === sessionId);
         if (!session?.agentSessionId) return;
         void agentClient.execInput(session.agentSessionId, line + '\n').catch(() => undefined);
+      },
+      loadInstalledApps: async () => {
+        if (get().agentState.status !== 'connected') {
+          set({ appsError: 'Desktop Agent offline — start it to see your installed apps.' });
+          return;
+        }
+        set({ appsLoading: true, appsError: null });
+        try {
+          const res = await agentClient.appsList();
+          set({ installedApps: res.apps ?? [], appsLoading: false, appsError: res.note ?? null });
+          get().logEvent('SYSTEM', `Loaded ${(res.apps ?? []).length} installed apps via agent`, 'info');
+        } catch (e) {
+          set({ appsLoading: false, appsError: e instanceof Error ? e.message : 'Failed to load apps' });
+        }
+      },
+      launchApp: async (appId) => {
+        if (get().agentState.status !== 'connected') {
+          get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'AGENT OFFLINE', body: 'Cannot launch apps — Desktop Agent disconnected.' });
+          return;
+        }
+        try {
+          const res = await agentClient.appsLaunch(appId);
+          get().pushNotification({
+            category: 'SYSTEM',
+            severity: res.ok ? 'success' : 'warning',
+            title: res.ok ? 'APP LAUNCHED' : 'LAUNCH FAILED',
+            body: res.ok ? 'Launched on your PC.' : (res.reason ?? 'Unknown error'),
+          });
+        } catch (e) {
+          get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'LAUNCH FAILED', body: e instanceof Error ? e.message : 'Unknown error' });
+        }
       },
       wireAgent: (hello: AgentHello) => {
         set({
