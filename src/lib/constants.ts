@@ -21,6 +21,8 @@ export const NAV: NavItem[] = [
   { id: 'extensions', label: 'Extensions', icon: 'Puzzle' },
   { id: 'marketplace', label: 'Marketplace', icon: 'Store' },
   { id: 'notes', label: 'VoxNotes', icon: 'StickyNote', badge: 'MD' },
+  { id: 'pairing', label: 'Phone Pairing', icon: 'QrCode', badge: 'LAN' },
+  { id: 'toolkit', label: 'Dev Toolkit', icon: 'Blocks', badge: 'CLI' },
   { id: 'settings', label: 'Settings', icon: 'Settings' },
 ];
 
@@ -62,6 +64,8 @@ export const APPS: { id: string; title: string; icon: string; section: SectionId
   { id: 'systemtools', title: 'System Apps', icon: 'MonitorCog', section: 'systemtools' },
   { id: 'store', title: 'V0X-ST0RE', icon: 'Store', section: 'store' },
   { id: 'notes', title: 'VoxNotes', icon: 'StickyNote', section: 'notes' },
+  { id: 'pairing', title: 'Phone Pairing', icon: 'QrCode', section: 'pairing' },
+  { id: 'toolkit', title: 'Dev Toolkit', icon: 'Blocks', section: 'toolkit' },
   { id: 'health', title: 'Health Scanner', icon: 'Activity', section: 'health' },
   { id: 'performance', title: 'Performance', icon: 'Gauge', section: 'performance' },
   { id: 'taskmanager', title: 'Task Manager', icon: 'ListOrdered', section: 'taskmanager' },
@@ -110,6 +114,8 @@ export const LAUNCHER: { id: SectionId; label: string; icon: string; tint: [stri
   { id: 'systemtools', label: 'System Apps', icon: 'MonitorCog', tint: ['#38bdf8', '#3b82f6'], blurb: 'Drive Mgmt, Task Mgr…' },
   { id: 'store', label: 'V0X-ST0RE', icon: 'Store', tint: ['#f59e0b', '#ef4444'], blurb: 'Get apps + games' },
   { id: 'notes', label: 'VoxNotes', icon: 'StickyNote', tint: ['#22d3ee', '#8b5cf6'], blurb: 'Markdown, autosave' },
+  { id: 'pairing', label: 'Phone Pairing', icon: 'QrCode', tint: ['#22d3ee', '#10b981'], blurb: 'Scan to control PC' },
+  { id: 'toolkit', label: 'Dev Toolkit', icon: 'Blocks', tint: ['#8b5cf6', '#22d3ee'], blurb: 'freebuff, codebuff, Gemini' },
   { id: 'voxcore', label: 'VOX Core', icon: 'Orbit', tint: ['#22d3ee', '#3b82f6'], blurb: 'Kernel' },
   { id: 'settings', label: 'Settings', icon: 'Settings', tint: ['#94a3b8', '#64748b'], blurb: 'System settings' },
 ];

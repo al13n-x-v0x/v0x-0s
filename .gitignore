@@ -7,6 +7,7 @@ dist-ssr/
 # secrets — never commit
 server/.env
 server/.vox-keys.json
+server/.vox-pair.json
 agent/.vox-agent.json
 .env
 .env.local

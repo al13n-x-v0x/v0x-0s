@@ -40,6 +40,8 @@ import { BrowserApp } from './apps/BrowserApp';
 import { SystemTools } from './apps/SystemTools';
 import { VoxStore } from './apps/VoxStore';
 import { Notes } from './apps/Notes';
+import { Pairing } from './apps/Pairing';
+import { DevKit } from './apps/DevKit';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -71,6 +73,8 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   systemtools: () => <SystemTools />,
   store: () => <VoxStore />,
   notes: () => <Notes />,
+  pairing: () => <Pairing />,
+  toolkit: () => <DevKit />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

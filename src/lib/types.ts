@@ -42,7 +42,9 @@ export type SectionId =
   | 'browser'
   | 'systemtools'
   | 'store'
-  | 'notes';
+  | 'notes'
+  | 'pairing'
+  | 'toolkit';
 
 export interface NavItem {
   id: SectionId;

@@ -11,9 +11,12 @@
 
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { WebSocketServer, WebSocket } from 'ws';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -57,6 +60,88 @@ function getKey(id) {
 const ENV_VARS = { gemini: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY', openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 function getGithubToken() {
   return getKey('github');
+}
+
+// ---- LAN pairing -----------------------------------------------------
+// The pairing token lets a phone on the same Wi-Fi open VOX-OS and control
+// the laptop through the agent bridge. It NEVER replaces the agent token —
+// it only gates the /ws/agent bridge, which injects the real agent token.
+const pairFile = path.join(__dirname, '.vox-pair.json');
+function loadPair() {
+  try { return JSON.parse(fs.readFileSync(pairFile, 'utf8')); } catch { return {}; }
+}
+function rotatePairToken() {
+  const token = crypto.randomBytes(18).toString('base64url');
+  try { fs.writeFileSync(pairFile, JSON.stringify({ token, createdAt: Date.now() }), { mode: 0o600 }); } catch { /* non-fatal */ }
+  return token;
+}
+function getPairToken() {
+  const p = loadPair();
+  return p.token || rotatePairToken();
+}
+function lanIPs() {
+  const out = [];
+  const ifs = os.networkInterfaces();
+  for (const name of Object.keys(ifs)) {
+    for (const i of ifs[name] || []) {
+      if (i.family === 'IPv4' && !i.internal) out.push({ name, address: i.address });
+    }
+  }
+  return out;
+}
+function isLoopback(req) {
+  const ip = req.socket.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || !ip;
+}
+function readAgentCfg() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'agent', '.vox-agent.json'), 'utf8')); } catch { return null; }
+}
+
+// ---- WS agent bridge (phone → laptop) --------------------------------
+// A remote client connects to ws://<laptop>:8787/ws/agent?pair=<token>;
+// we validate the pairing token, open a WS to the LOCAL agent, and pipe
+// frames both ways, injecting the real agent token into the hello.
+const bridgeWs = new WebSocketServer({ noServer: true });
+function bridgeAgent(clientWs) {
+  const cfg = readAgentCfg();
+  if (!cfg || !cfg.port) {
+    try { clientWs.close(1011, 'agent not configured'); } catch { /* ignore */ }
+    return;
+  }
+  let agentWs = null;
+  try {
+    agentWs = new WebSocket(`ws://127.0.0.1:${cfg.port}`);
+  } catch {
+    try { clientWs.close(1011, 'agent unreachable'); } catch { /* ignore */ }
+    return;
+  }
+  const queue = []; // frames arriving before the agent socket is open
+  let open = false;
+  const flush = () => {
+    for (const d of queue) { try { agentWs.send(d); } catch { /* ignore */ } }
+    queue.length = 0;
+    try { clientWs.send(JSON.stringify({ type: 'event', name: 'bridge', data: { ok: true } })); } catch { /* ignore */ }
+  };
+  console.error(`[VOX] bridge → agent ws://127.0.0.1:${cfg.port} (pairing)`);
+  agentWs.on('open', () => { open = true; flush(); });
+  agentWs.on('error', (e) => console.error('[VOX] bridge agent ws error:', e.message));
+  agentWs.on('message', (data) => {
+    if (clientWs.readyState === WebSocket.OPEN) clientWs.send(data);
+  });
+  agentWs.on('close', () => { try { clientWs.close(); } catch { /* ignore */ } });
+  clientWs.on('message', (data) => {
+    try {
+      const m = JSON.parse(data.toString());
+      if (m && m.type === 'hello' && cfg.token) m.token = cfg.token; // phone never holds the agent token
+      data = Buffer.from(JSON.stringify(m));
+    } catch { /* pass through raw */ }
+    if (open) {
+      try { agentWs.send(data); } catch (e) { console.error('[VOX] bridge forward error:', e.message); }
+    } else {
+      queue.push(data);
+    }
+  });
+  clientWs.on('close', () => { try { agentWs.close(); } catch { /* ignore */ } });
 }
 const PROVIDERS = {
   gemini: { label: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
@@ -434,6 +519,11 @@ const server = http.createServer(async (req, res) => {
         req.on('timeout', () => { req.destroy(); resolve(false); });
       });
       if (!running) return json(200, { running: false, configured: true, port: agentCfg.port, error: 'Daemon not running — start it with: node agent/index.js' });
+      // Remote clients (phones over LAN) go through the pairing bridge — the
+      // real agent token never leaves this machine.
+      if (!isLoopback(req)) {
+        return json(200, { running: true, configured: true, bridged: true, url: `ws://${req.headers.host}/ws/agent?pair=${getPairToken()}`, token: 'bridge', version: agentCfg.version, permissions: agentCfg.permissions });
+      }
       return json(200, { running: true, configured: true, url: `ws://127.0.0.1:${agentCfg.port}`, token: agentCfg.token, version: agentCfg.version, permissions: agentCfg.permissions });
     } catch {
       return json(200, { running: false, configured: false, error: 'No agent config found. Start the daemon: node agent/index.js (it generates a token on first run).' });
@@ -710,7 +800,66 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ---- LAN pairing / phone control ----------------------------------
+  if (method === 'GET' && pathname === '/api/pairing') {
+    const desktop = process.env.VOX_DESKTOP === '1' || (() => {
+      try { return !!(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'electron', 'desktop-info.json'), 'utf8')).desktop); } catch { return false; }
+    })();
+    const agentCfg = readAgentCfg();
+    return json(200, {
+      desktop,
+      port: PORT,
+      lan: lanIPs(),
+      pairToken: getPairToken(),
+      agent: agentCfg ? { port: agentCfg.port, hostname: agentCfg.hostname || '' } : null,
+      remote: !isLoopback(req),
+      hostname: os.hostname(),
+    });
+  }
+  if (method === 'POST' && pathname === '/api/pairing/rotate') {
+    const token = rotatePairToken();
+    return json(200, { ok: true, pairToken: token });
+  }
+
+  // ---- built web app (serve dist/ so phones on the LAN can load VOX-OS) ----
+  if (method === 'GET' && !pathname.startsWith('/api/') && !pathname.startsWith('/ws/')) {
+    const DIST = path.join(__dirname, '..', 'dist');
+    const clean = pathname === '/' ? '/index.html' : pathname;
+    const file = path.join(DIST, clean);
+    if (file.startsWith(DIST) && fs.existsSync(file) && fs.statSync(file).isFile()) {
+      const ext = path.extname(file).toLowerCase();
+      const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.map': 'application/json' };
+      res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Access-Control-Allow-Origin': '*' });
+      return fs.createReadStream(file).pipe(res);
+    }
+    // SPA fallback
+    if (fs.existsSync(path.join(DIST, 'index.html'))) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      return fs.createReadStream(path.join(DIST, 'index.html')).pipe(res);
+    }
+  }
+
   return json(404, { error: 'Not found' });
+});
+
+// ---- WS agent bridge upgrade (must attach after `server` exists) ----
+server.on('upgrade', (req, socket, head) => {
+  let url;
+  try { url = new URL(req.url, 'http://localhost'); } catch { socket.destroy(); return; }
+  if (url.pathname === '/ws/agent') {
+    const pair = url.searchParams.get('pair');
+    if (!pair || pair !== getPairToken()) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    bridgeWs.handleUpgrade(req, socket, head, (ws) => {
+      bridgeWs.emit('connection', ws, req);
+      bridgeAgent(ws);
+    });
+    return;
+  }
+  socket.destroy();
 });
 
 server.listen(PORT, () => {

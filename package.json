@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
     "@capacitor/cli": "^6.2.1",
     "@capacitor/core": "^6.2.1",
     "@fontsource/inter": "^5.0.18",
@@ -30,6 +31,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.441.0",
     "prismjs": "^1.29.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ws": "^8.21.3",
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/prismjs": "^1.26.4",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
@@ -66,11 +69,14 @@
     ],
     "directories": {
       "output": "release"
-    },    "win": {
+    },
+    "win": {
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/vox.ico",

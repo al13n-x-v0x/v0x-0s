@@ -1,7 +1,12 @@
 import type { ProviderId, RouterLogEntry } from './types';
 import { uid } from './fmt';
 
-const BASE = '/api';
+let BASE = '/api';
+
+/** Point all API calls at a remote VOX backend (phone → laptop pairing). */
+export function setApiBase(url: string) {
+  BASE = (url || '').replace(/\/+$/, '') + '/api';
+}
 
 export type BackendStatus = 'unknown' | 'online' | 'offline';
 

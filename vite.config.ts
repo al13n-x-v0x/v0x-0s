@@ -12,6 +12,11 @@ export default defineConfig({
         target: 'http://localhost:8787',
         changeOrigin: true,
       },
+      // agent bridge WebSocket (dev)
+      '/ws': {
+        target: 'ws://localhost:8787',
+        ws: true,
+      },
     },
   },
   build: {

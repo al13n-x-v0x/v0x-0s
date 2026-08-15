@@ -13,7 +13,7 @@ import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
 import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
 import { agentClient, type AgentHello, type AgentStats } from './agent';
-import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, createGithubRepo, pushGithubCommit, demoReply, classifyTask, routerEntry, BackendStatus } from './ai';
+import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, createGithubRepo, pushGithubCommit, demoReply, classifyTask, routerEntry, setApiBase, BackendStatus } from './ai';
 import type { GithubSecretFinding, GithubBranch, GithubCommit, GithubIssue, GithubPull } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
@@ -163,6 +163,9 @@ export interface VoxState {
   };
   // ---- voice ----
   voice: VoiceState;
+  /** laptop backend this client is paired with (phone → laptop) */
+  pairHost: string | null;
+  pairToken: string | null;
   // ---- actions ----
   boot: () => void;
   finishBoot: () => void;
@@ -274,6 +277,10 @@ export interface VoxState {
   checkWhisper: () => Promise<void>;
   /** pick the STT backend: auto / local whisper / browser */
   setVoiceEngine: (engine: 'auto' | 'whisper' | 'browser') => void;
+  /** point this client at a laptop backend (phone → laptop pairing) */
+  applyPairing: (host: string, token: string) => void;
+  /** read ?pair= from the URL + listen for voxos:// deep links */
+  initPairing: () => void;
   addVoiceHistory: (text: string) => void;
   setVoiceStatus: (s: VoiceState['status'], error?: string) => void;
   executeVoiceCommand: (text: string) => string;
@@ -531,12 +538,15 @@ export const useVox = create<VoxState>()(
       githubScan: { status: 'idle', repo: '', branch: '', filesScanned: 0, filesSkipped: 0, findings: [], error: null, scannedAt: null },
       githubDetail: { repo: '', tab: 'branches', loading: false, error: null, branch: '', branches: [], commits: [], issues: [], pulls: [] },
       voice: initialVoice,
+      pairHost: null,
+      pairToken: null,
 
       // ================= SHELL =================
       boot: () => {
         configureSound(get().settings.sound, get().settings.soundVolume);
         set({ voice: { ...get().voice, sttSupported: sttSupported(), ttsSupported: ttsSupported() } });
         void get().checkWhisper();
+        get().initPairing();
         if (!get().settings.bootAnimation || get().settings.reducedMotion) {
           get().finishBoot();
           return;
@@ -557,6 +567,37 @@ export const useVox = create<VoxState>()(
             void get().connectAgent();
           }
         }).catch(() => undefined);
+      },
+      applyPairing: (host, token) => {
+        const clean = String(host || '').replace(/\/+$/, '');
+        if (!clean || !token) return;
+        set({ pairHost: clean, pairToken: token });
+        setApiBase(clean);
+        get().logEvent('SYSTEM', `Paired with ${clean} — agent bridge armed`, 'success');
+        get().pushNotification({ category: 'SYSTEM', severity: 'success', title: 'PAIRED', body: `Controlling ${clean}.` });
+      },
+      initPairing: () => {
+        // deep link handler: voxos://pair?url=http://ip:8787&pair=TOKEN (Capacitor APK)
+        const handle = (raw: string) => {
+          try {
+            const u = new URL(raw.replace(/^voxos:\/\//, 'http://voxos.local/'));
+            const token = u.searchParams.get('pair') || u.searchParams.get('token') || '';
+            const host = u.searchParams.get('url') || '';
+            if (token && host) get().applyPairing(host, token);
+          } catch { /* ignore */ }
+        };
+        // web path: the phone browser loads http://ip:8787/?pair=TOKEN
+        try {
+          const sp = new URLSearchParams(window.location.search);
+          const token = sp.get('pair') || '';
+          if (token) get().applyPairing(window.location.origin, token);
+        } catch { /* ignore */ }
+        // Capacitor deep links (only fires inside the APK)
+        try {
+          void import('@capacitor/app').then(({ App }) => {
+            void App.addListener('appUrlOpen', (data: { url: string }) => handle(data.url));
+          }).catch(() => undefined);
+        } catch { /* web build */ }
       },
       setOnboardingDone: () => set({ onboardingDone: true }),
       setSection: (s) => {
@@ -1279,6 +1320,19 @@ export const useVox = create<VoxState>()(
 
       // ================= DESKTOP AGENT =================
       connectAgent: async (manualUrl, manualToken) => {
+        // phone → laptop: connect through the backend pairing bridge
+        if (!manualUrl && get().pairHost && get().pairToken) {
+          const wsUrl = get().pairHost!.replace(/^http/, 'ws') + '/ws/agent?pair=' + encodeURIComponent(get().pairToken!);
+          set({ agentState: { ...get().agentState, status: 'connecting', lastError: undefined } });
+          try {
+            const hello = await agentClient.connect(wsUrl, 'bridge', 8000);
+            get().wireAgent(hello);
+            return;
+          } catch (e) {
+            set({ agentState: { ...get().agentState, status: 'disconnected', lastError: e instanceof Error ? e.message : 'Bridge connection failed' } });
+            return;
+          }
+        }
         set({ agentState: { ...get().agentState, status: 'connecting', lastError: undefined } });
         let url = manualUrl;
         let token = manualToken;
@@ -1897,6 +1951,8 @@ export const useVox = create<VoxState>()(
         githubRepos: s.githubRepos,
         routerLog: s.routerLog.slice(0, 40),
         voice: s.voice,
+        pairHost: s.pairHost,
+        pairToken: s.pairToken,
       }),
     },
   ),
