@@ -39,6 +39,7 @@ import { MyApps } from './apps/MyApps';
 import { BrowserApp } from './apps/BrowserApp';
 import { SystemTools } from './apps/SystemTools';
 import { VoxStore } from './apps/VoxStore';
+import { Notes } from './apps/Notes';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -69,6 +70,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   myapps: () => <MyApps />,
   systemtools: () => <SystemTools />,
   store: () => <VoxStore />,
+  notes: () => <Notes />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useVox } from '../lib/store';
 import { Badge, Button, Icon, Panel, StatusDot, Toggle } from '../components/ui';
 import { VoxCore } from '../components/VoxCore';
@@ -23,10 +24,23 @@ export function VoiceEngine() {
           <p className="hud-label mb-1.5">VOX VOICE ENGINE</p>
           <h1 className="font-display text-[22px] font-semibold tracking-[0.06em] uppercase">Speech · Command · Response</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge tone={v.sttSupported ? 'green' : 'dim'}>{v.sttSupported ? 'STT AVAILABLE' : 'STT UNAVAILABLE'}</Badge>
           <Badge tone={v.ttsSupported ? 'green' : 'dim'}>{v.ttsSupported ? 'TTS AVAILABLE' : 'TTS UNAVAILABLE'}</Badge>
+          <button onClick={() => void s.checkWhisper()} className="cursor-pointer" title="Probe the local Whisper service (tools/whisper-service.py)">
+            <Badge tone={v.whisperOnline ? 'violet' : 'dim'}>
+              <span className={clsx('dot', v.whisperOnline ? 'dot-online' : 'dot-dim')} /> LOCAL WHISPER {v.whisperOnline ? 'ONLINE' : 'OFFLINE'}
+            </Badge>
+          </button>
           <Toggle checked={s.settings.voiceEnabled} onChange={(val) => s.setSettings({ voiceEnabled: val })} label="Voice enabled" />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="hud-label mr-1">STT ENGINE</span>
+          {(['auto', 'whisper', 'browser'] as const).map((e) => (
+            <button key={e} onClick={() => s.setVoiceEngine(e)} className={clsx('px-2.5 py-1 rounded-md text-[9.5px] font-semibold tracking-wider border uppercase', v.sttEngine === e ? 'bg-violet-400/10 text-violet-300 border-violet-400/30' : 'text-vox-dim border-vox-line hover:text-vox-muted')}>
+              {e === 'auto' ? 'AUTO' : e === 'whisper' ? 'LOCAL' : 'BROWSER'}
+            </button>
+          ))}
         </div>
       </div>
 

@@ -591,3 +591,63 @@ html[data-anim='off'] *, html[data-anim='off'] *::before, html[data-anim='off'] 
 }
 html[data-anim='off'] .win-exit { animation: none !important; }
 html[data-anim='off'] .win-min { animation: none !important; }
+
+/* ---------- VoxNotes markdown preview ---------- */
+.markdown-body {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--vox-muted, #a5b4c8);
+  overflow-wrap: break-word;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+  color: var(--vox-text, #e8f0fa);
+  font-family: var(--font-display, 'Rajdhani', 'Orbitron', sans-serif);
+  letter-spacing: 0.04em;
+  margin: 1em 0 0.4em;
+}
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 17px; }
+.markdown-body h3 { font-size: 15px; }
+.markdown-body h4 { font-size: 13px; }
+.markdown-body h1:first-child { margin-top: 0; }
+.markdown-body p { margin: 0.5em 0; }
+.markdown-body code {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.92em;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  color: #7dd3fc;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+}
+.markdown-body pre {
+  background: rgba(2, 6, 23, 0.7);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0.7em 0;
+}
+.markdown-body pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #bae6fd;
+}
+.markdown-body a {
+  color: #22d3ee;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body blockquote {
+  border-left: 2px solid rgba(139, 92, 246, 0.5);
+  padding: 0.2em 0.9em;
+  margin: 0.6em 0;
+  color: var(--vox-dim, #64748b);
+  font-style: italic;
+}
+.markdown-body ul, .markdown-body ol { padding-left: 1.4em; margin: 0.5em 0; }
+.markdown-body li { margin: 0.2em 0; }
+.markdown-body hr { border: none; border-top: 1px solid rgba(148, 163, 184, 0.2); margin: 1em 0; }
+.markdown-body strong { color: #e8f0fa; }
+.markdown-body em { color: #c4b5fd; }

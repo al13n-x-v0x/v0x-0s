@@ -20,6 +20,7 @@ export const NAV: NavItem[] = [
   { id: 'browser', label: 'VOX Browser', icon: 'Globe', badge: 'GX' },
   { id: 'extensions', label: 'Extensions', icon: 'Puzzle' },
   { id: 'marketplace', label: 'Marketplace', icon: 'Store' },
+  { id: 'notes', label: 'VoxNotes', icon: 'StickyNote', badge: 'MD' },
   { id: 'settings', label: 'Settings', icon: 'Settings' },
 ];
 
@@ -60,6 +61,7 @@ export const APPS: { id: string; title: string; icon: string; section: SectionId
   { id: 'browser', title: 'VOX Browser', icon: 'Globe', section: 'browser' },
   { id: 'systemtools', title: 'System Apps', icon: 'MonitorCog', section: 'systemtools' },
   { id: 'store', title: 'V0X-ST0RE', icon: 'Store', section: 'store' },
+  { id: 'notes', title: 'VoxNotes', icon: 'StickyNote', section: 'notes' },
   { id: 'health', title: 'Health Scanner', icon: 'Activity', section: 'health' },
   { id: 'performance', title: 'Performance', icon: 'Gauge', section: 'performance' },
   { id: 'taskmanager', title: 'Task Manager', icon: 'ListOrdered', section: 'taskmanager' },
@@ -107,6 +109,7 @@ export const LAUNCHER: { id: SectionId; label: string; icon: string; tint: [stri
   { id: 'myapps', label: 'My Apps', icon: 'AppWindow', tint: ['#22d3ee', '#10b981'], blurb: 'Your installed apps' },
   { id: 'systemtools', label: 'System Apps', icon: 'MonitorCog', tint: ['#38bdf8', '#3b82f6'], blurb: 'Drive Mgmt, Task Mgr…' },
   { id: 'store', label: 'V0X-ST0RE', icon: 'Store', tint: ['#f59e0b', '#ef4444'], blurb: 'Get apps + games' },
+  { id: 'notes', label: 'VoxNotes', icon: 'StickyNote', tint: ['#22d3ee', '#8b5cf6'], blurb: 'Markdown, autosave' },
   { id: 'voxcore', label: 'VOX Core', icon: 'Orbit', tint: ['#22d3ee', '#3b82f6'], blurb: 'Kernel' },
   { id: 'settings', label: 'Settings', icon: 'Settings', tint: ['#94a3b8', '#64748b'], blurb: 'System settings' },
 ];

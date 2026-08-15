@@ -41,7 +41,8 @@ export type SectionId =
   | 'myapps'
   | 'browser'
   | 'systemtools'
-  | 'store';
+  | 'store'
+  | 'notes';
 
 export interface NavItem {
   id: SectionId;
@@ -354,5 +355,9 @@ export interface VoiceState {
   micPermission: 'unknown' | 'granted' | 'blocked';
   sttSupported: boolean;
   ttsSupported: boolean;
+  /** local Whisper service (tools/whisper-service.py) reachable */
+  whisperOnline: boolean;
+  /** which STT backend to use */
+  sttEngine: 'auto' | 'whisper' | 'browser';
   error?: string;
 }

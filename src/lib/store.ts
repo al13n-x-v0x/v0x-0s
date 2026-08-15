@@ -17,6 +17,7 @@ import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderK
 import type { GithubSecretFinding, GithubBranch, GithubCommit, GithubIssue, GithubPull } from './ai';
 import { sfx, configureSound } from './sounds';
 import { speak, stopSpeaking, getRecognition } from './voice';
+import { checkWhisper, recordWhisperAudio, transcribeViaWhisper } from './whisper';
 import { clamp, maskKey, timeAgo, uid } from './fmt';
 import { writeFile, readFile, addNode, removeNode, renameNode, countFiles, walk } from './vfs';
 import { scanForSecrets } from './secrets';
@@ -269,6 +270,10 @@ export interface VoxState {
   startListening: () => void;
   stopListening: () => void;
   speakText: (text: string) => void;
+  /** probe the local Whisper STT service (tools/whisper-service.py) */
+  checkWhisper: () => Promise<void>;
+  /** pick the STT backend: auto / local whisper / browser */
+  setVoiceEngine: (engine: 'auto' | 'whisper' | 'browser') => void;
   addVoiceHistory: (text: string) => void;
   setVoiceStatus: (s: VoiceState['status'], error?: string) => void;
   executeVoiceCommand: (text: string) => string;
@@ -422,7 +427,12 @@ const initialVoice: VoiceState = {
   micPermission: 'unknown',
   sttSupported: false,
   ttsSupported: false,
+  whisperOnline: false,
+  sttEngine: 'auto',
 };
+
+// lets the STOP button end a local-Whisper recording early
+let whisperStopRef: { stop: boolean } | null = null;
 
 export const useVox = create<VoxState>()(
   persist(
@@ -526,6 +536,7 @@ export const useVox = create<VoxState>()(
       boot: () => {
         configureSound(get().settings.sound, get().settings.soundVolume);
         set({ voice: { ...get().voice, sttSupported: sttSupported(), ttsSupported: ttsSupported() } });
+        void get().checkWhisper();
         if (!get().settings.bootAnimation || get().settings.reducedMotion) {
           get().finishBoot();
           return;
@@ -1532,11 +1543,49 @@ export const useVox = create<VoxState>()(
       },
 
       // ================= VOICE =================
+      checkWhisper: async () => {
+        const st = await checkWhisper();
+        set({ voice: { ...get().voice, whisperOnline: st.online } });
+      },
+      setVoiceEngine: (engine) => set({ voice: { ...get().voice, sttEngine: engine } }),
       startListening: () => {
-        const stt = getRecognition();
         const v = get().voice;
+        // local Whisper first: auto (if online) or explicitly chosen
+        const useWhisper = v.whisperOnline && (v.sttEngine === 'whisper' || v.sttEngine === 'auto');
+        if (useWhisper) {
+          whisperStopRef = { stop: false };
+          set({ voice: { ...get().voice, status: 'listening', error: undefined, transcript: '', micPermission: 'granted' } });
+          get().logEvent('SYSTEM', 'VOX listening via local Whisper (offline STT)', 'info');
+          recordWhisperAudio(
+            (secs) => set({ voice: { ...get().voice, transcript: `● listening… ${secs.toFixed(0)}s` } }),
+            15_000,
+            whisperStopRef
+          )
+            .then(async (blob) => {
+              if (!blob) {
+                set({ voice: { ...get().voice, status: 'idle', transcript: '' } });
+                return;
+              }
+              set({ voice: { ...get().voice, status: 'processing', transcript: 'Transcribing locally…' } });
+              try {
+                const text = await transcribeViaWhisper(blob);
+                if (text) {
+                  get().addVoiceHistory(text);
+                  get().executeVoiceCommand(text);
+                }
+                set({ voice: { ...get().voice, status: 'idle', transcript: '' } });
+              } catch {
+                set({ voice: { ...get().voice, status: 'error', error: 'Local Whisper failed — switch to the browser engine in Voice Engine.', transcript: '' } });
+              }
+            })
+            .catch((e: unknown) => {
+              set({ voice: { ...get().voice, status: 'error', error: e instanceof Error ? e.message : 'Microphone error', transcript: '' } });
+            });
+          return;
+        }
+        const stt = getRecognition();
         if (!stt) {
-          set({ voice: { ...v, status: 'error', error: 'VOICE INPUT UNAVAILABLE — this browser does not expose SpeechRecognition. Type a command instead.' } });
+          set({ voice: { ...get().voice, status: 'error', error: v.whisperOnline ? 'VOICE INPUT UNAVAILABLE — start tools/whisper-service.py, then press the mic again.' : 'VOICE INPUT UNAVAILABLE — this browser does not expose SpeechRecognition. Type a command instead.' } });
           return;
         }
         const r = stt as unknown as {
@@ -1573,6 +1622,7 @@ export const useVox = create<VoxState>()(
         }
       },
       stopListening: () => {
+        if (whisperStopRef) { whisperStopRef.stop = true; whisperStopRef = null; }
         try { getRecognition()?.stop(); } catch { /* noop */ }
         set({ voice: { ...get().voice, status: 'idle' } });
       },
