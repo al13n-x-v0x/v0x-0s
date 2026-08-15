@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useVox } from '../lib/store';
-import type { ThemeId } from '../lib/types';
-import { APP_VERSION } from '../lib/constants';
+import type { ProviderId, ThemeId } from '../lib/types';
+import { APP_VERSION, PROVIDERS } from '../lib/constants';
 import { Badge, Button, Field, Icon, Input, Select, Slider, Toggle } from '../components/ui';
 import { sfx } from '../lib/sounds';
 import { speak } from '../lib/voice';
@@ -152,14 +152,16 @@ function AICfg() {
       <Row label="Primary provider" hint="Preferred provider for AI requests.">
         <Select value={s.settings.primaryProvider} onChange={(e) => s.setSettings({ primaryProvider: e.target.value as never })} className="!w-44">
           <option value="auto">AUTO (smart)</option>
-          <option value="gemini">Gemini</option>
-          <option value="groq">Groq</option>
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
         </Select>
       </Row>
       <Row label="Secondary provider" hint="Used for failover when the primary provider fails.">
-        <Select value={s.settings.secondaryProvider} onChange={(e) => s.setSettings({ secondaryProvider: e.target.value as 'gemini' | 'groq' })} className="!w-44">
-          <option value="gemini">Gemini</option>
-          <option value="groq">Groq</option>
+        <Select value={s.settings.secondaryProvider} onChange={(e) => s.setSettings({ secondaryProvider: e.target.value as ProviderId })} className="!w-44">
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
         </Select>
       </Row>
       <Row label="Routing mode" hint="AUTO routes by task, PRIMARY ONLY pins one provider, FAILOVER retries the secondary, DUAL uses both providers in parallel.">

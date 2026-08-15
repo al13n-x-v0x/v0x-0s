@@ -3,6 +3,7 @@ import { useVox } from '../lib/store';
 import type { ProviderId } from '../lib/types';
 import { Badge, Button, Icon, Panel, StatusDot } from '../components/ui';
 import { ProviderCard, ProviderConfigModal } from '../components/ai';
+import { PROVIDERS } from '../lib/constants';
 import { scanForSecrets } from '../lib/secrets';
 import { walk, isSecretPath } from '../lib/vfs';
 
@@ -21,18 +22,19 @@ export function ApiManager() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <ProviderCard id="gemini" onConfigure={() => setConfigId('gemini')} onRemove={() => void s.removeProvider('gemini')} onTest={() => void s.testProviderConn('gemini')} onModel={() => void s.refreshModels('gemini')} />
-        <ProviderCard id="groq" onConfigure={() => setConfigId('groq')} onRemove={() => void s.removeProvider('groq')} onTest={() => void s.testProviderConn('groq')} onModel={() => void s.refreshModels('groq')} />
+        {PROVIDERS.map((p) => (
+          <ProviderCard key={p.id} id={p.id} onConfigure={() => setConfigId(p.id)} onRemove={() => void s.removeProvider(p.id)} onTest={() => void s.testProviderConn(p.id)} onModel={() => void s.refreshModels(p.id)} />
+        ))}
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         <Panel title="Security Model" icon="ShieldCheck" glow="violet">
           <div className="space-y-2.5">
             {[
-              ['Backend-only key storage', 'GEMINI_API_KEY and GROQ_API_KEY are read from server/.env or set via the backend API. Never from the browser.'],
+              ['Backend-only key storage', 'GEMINI, GROQ, OPENAI and ANTHROPIC keys are read from server/.env or set via the backend API. Never from the browser.'],
               ['No keys in frontend', 'Keys are never embedded in React, HTML, client JS, or public files.'],
               ['No keys in logs or errors', 'Errors surface categories (INVALID API KEY, RATE LIMITED, NETWORK ERROR) — never the key.'],
-              ['Reveal/hide + masking', 'Saved keys render as a short safe prefix only, e.g. AIza•••••••••••••••••• or gsk_••••••••••••••••••.'],
+              ['Reveal/hide + masking', 'Saved keys render as a short safe prefix only, e.g. AIza••••••••••••••••••, gsk_••••••••••••••••••, sk-••••••••••••••••••.'],
               ['Rotation support', 'Replace a key only after a successful test of the new value.'],
             ].map(([t, d]) => (
               <div key={t as string} className="flex items-start gap-2.5">

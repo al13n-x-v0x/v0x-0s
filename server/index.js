@@ -45,15 +45,24 @@ function saveKeys(keys) {
 }
 let storedKeys = loadKeys();
 function getKey(id) {
-  const env = { gemini: process.env.GEMINI_API_KEY, groq: process.env.GROQ_API_KEY, github: process.env.GITHUB_TOKEN };
+  const env = {
+    gemini: process.env.GEMINI_API_KEY,
+    groq: process.env.GROQ_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    github: process.env.GITHUB_TOKEN,
+  };
   return storedKeys[id] || env[id] || '';
 }
+const ENV_VARS = { gemini: 'GEMINI_API_KEY', groq: 'GROQ_API_KEY', openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 function getGithubToken() {
   return getKey('github');
 }
 const PROVIDERS = {
   gemini: { label: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'] },
   groq: { label: 'Groq', models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'] },
+  openai: { label: 'OpenAI (ChatGPT)', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'] },
+  anthropic: { label: 'Anthropic Claude', models: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-3-5-haiku-20241022'] },
 };
 
 // ---- rate limiting (simple in-memory) --------------------------------
@@ -123,6 +132,61 @@ async function groqComplete(model, systemPrompt, messages, apiKey, maxTokens, te
   return text;
 }
 
+async function openaiComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature) {
+  const msgs = [];
+  if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
+  for (const m of messages) {
+    if (m.role === 'system') continue;
+    msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+  }
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, messages: msgs, max_tokens: maxTokens, temperature }),
+  });
+  if (!res.ok) {
+    let category = 'PROVIDER ERROR';
+    if (res.status === 401) category = 'INVALID API KEY';
+    if (res.status === 429) category = 'RATE LIMITED';
+    if (res.status === 404) category = 'MODEL UNAVAILABLE';
+    const body = await res.text().catch(() => '');
+    throw new ApiError(category, `OpenAI request failed (HTTP ${res.status})${safeDetail(body)}`);
+  }
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content ?? '';
+  if (!text) throw new ApiError('PROVIDER ERROR', 'OpenAI returned an empty response.');
+  return text;
+}
+
+async function anthropicComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature) {
+  const msgs = [];
+  for (const m of messages) {
+    if (m.role === 'system') continue;
+    msgs.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
+  }
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({ model, max_tokens: maxTokens, temperature, system: systemPrompt || undefined, messages: msgs }),
+  });
+  if (!res.ok) {
+    let category = 'PROVIDER ERROR';
+    if (res.status === 401) category = 'INVALID API KEY';
+    if (res.status === 429) category = 'RATE LIMITED';
+    if (res.status === 404) category = 'MODEL UNAVAILABLE';
+    const body = await res.text().catch(() => '');
+    throw new ApiError(category, `Anthropic request failed (HTTP ${res.status})${safeDetail(body)}`);
+  }
+  const data = await res.json();
+  const text = (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('') ?? '';
+  if (!text) throw new ApiError('PROVIDER ERROR', 'Anthropic returned an empty response.');
+  return text;
+}
+
 function classifyTask(text) {
   const q = text.toLowerCase();
   if (/(explain|what is|how do)/.test(q)) return 'QUICK EXPLANATION';
@@ -135,15 +199,19 @@ function classifyTask(text) {
 
 function pickProvider(settings, task) {
   if (settings.primaryProvider && settings.primaryProvider !== 'auto') return settings.primaryProvider;
-  // smart auto
+  // smart auto: deep tasks get the strongest available model
   const deep = ['DEEP ANALYSIS', 'CODE GENERATION', 'CODE REVIEW', 'LARGE CONTEXT'];
-  if (deep.includes(task) && getKey('gemini')) return 'gemini';
-  if (getKey('groq')) return 'groq';
+  if (deep.includes(task)) {
+    for (const id of ['gemini', 'anthropic', 'openai', 'groq']) if (getKey(id)) return id;
+  }
+  for (const id of ['groq', 'openai', 'gemini', 'anthropic']) if (getKey(id)) return id;
   return getKey('gemini') ? 'gemini' : 'groq';
 }
 
 async function complete(providerId, model, systemPrompt, messages, apiKey, maxTokens, temperature) {
   if (providerId === 'gemini') return geminiComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature);
+  if (providerId === 'openai') return openaiComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature);
+  if (providerId === 'anthropic') return anthropicComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature);
   return groqComplete(model, systemPrompt, messages, apiKey, maxTokens, temperature);
 }
 
@@ -168,7 +236,7 @@ const server = http.createServer(async (req, res) => {
 
   // health
   if (method === 'GET' && pathname === '/api/health') {
-    return json(200, { ok: true, version: '0.1.0', providers: { gemini: !!getKey('gemini'), groq: !!getKey('groq') } });
+    return json(200, { ok: true, version: '0.1.0', providers: { gemini: !!getKey('gemini'), groq: !!getKey('groq'), openai: !!getKey('openai'), anthropic: !!getKey('anthropic') } });
   }
 
   // ---- AI chat (SSE streaming) ----
@@ -186,12 +254,14 @@ const server = http.createServer(async (req, res) => {
     const temperature = Number(settings.temperature) ?? 0.7;
     const task = classifyTask(payload.content || '');
     const primary = pickProvider(settings, task);
-    const secondary = settings.secondaryProvider === 'gemini' ? 'gemini' : 'groq';
+    const secondary = ['gemini', 'groq', 'openai', 'anthropic'].includes(settings.secondaryProvider) && settings.secondaryProvider !== primary
+      ? settings.secondaryProvider
+      : (primary === 'gemini' ? 'groq' : 'gemini');
 
     const started = Date.now();
     const attempt = async (providerId) => {
       const key = getKey(providerId);
-      if (!key) throw new ApiError('CONFIGURATION ERROR', `${providerId.toUpperCase()} is not configured. Set ${providerId === 'gemini' ? 'GEMINI_API_KEY' : 'GROQ_API_KEY'} in server/.env.`);
+      if (!key) throw new ApiError('CONFIGURATION ERROR', `${providerId.toUpperCase()} is not configured. Set ${ENV_VARS[providerId] || providerId.toUpperCase() + '_API_KEY'} in server/.env.`);
       const model = payload.models?.[providerId] || PROVIDERS[providerId].models[0];
       const text = await complete(providerId, model, systemPrompt, messages, key, maxTokens, temperature);
       return { text, provider: providerId, model, latencyMs: Date.now() - started };
@@ -273,7 +343,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- provider config (save key) ----
-  if (method === 'POST' && /^\/api\/ai\/providers\/(gemini|groq)\/config$/.test(pathname)) {
+  if (method === 'POST' && /^\/api\/ai\/providers\/(gemini|groq|openai|anthropic)\/config$/.test(pathname)) {
     const id = pathname.split('/')[4];
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -286,7 +356,7 @@ const server = http.createServer(async (req, res) => {
     saveKeys(storedKeys);
     return json(200, { ok: true, masked: key.slice(0, 4) + '••••••••••••••••••' });
   }
-  if (method === 'DELETE' && /^\/api\/ai\/providers\/(gemini|groq)\/config$/.test(pathname)) {
+  if (method === 'DELETE' && /^\/api\/ai\/providers\/(gemini|groq|openai|anthropic)\/config$/.test(pathname)) {
     const id = pathname.split('/')[4];
     delete storedKeys[id];
     saveKeys(storedKeys);
@@ -294,44 +364,55 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ---- provider test ----
-  if (method === 'POST' && /^\/api\/ai\/providers\/(gemini|groq)\/test$/.test(pathname)) {
+  if (method === 'POST' && /^\/api\/ai\/providers\/(gemini|groq|openai|anthropic)\/test$/.test(pathname)) {
     const id = pathname.split('/')[4];
     const key = getKey(id);
     if (!key) return json(400, { error: `${id.toUpperCase()} is not configured`, category: 'CONFIGURATION ERROR' });
     const started = Date.now();
+    const endpoints = {
+      gemini: ['https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key), {}],
+      groq: ['https://api.groq.com/openai/v1/models', { Authorization: `Bearer ${key}` }],
+      openai: ['https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` }],
+      anthropic: ['https://api.anthropic.com/v1/models', { 'x-api-key': key, 'anthropic-version': '2023-06-01' }],
+    };
     try {
-      if (id === 'gemini') {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key), { headers: { Accept: 'application/json' } });
-        if (!res.ok) throw new ApiError(res.status === 429 ? 'RATE LIMITED' : res.status === 400 ? 'INVALID API KEY' : 'PROVIDER ERROR', `Gemini test failed (HTTP ${res.status})`);
-        const data = await res.json();
-        const models = (data.models || []).filter((m) => m.name.startsWith('models/gemini')).map((m) => m.name.replace('models/', ''));
-        return json(200, { ok: true, latencyMs: Date.now() - started, model: models[0] || 'gemini-2.0-flash', models });
-      } else {
-        const res = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` } });
-        if (!res.ok) throw new ApiError(res.status === 429 ? 'RATE LIMITED' : res.status === 401 ? 'INVALID API KEY' : 'PROVIDER ERROR', `Groq test failed (HTTP ${res.status})`);
-        const data = await res.json();
-        return json(200, { ok: true, latencyMs: Date.now() - started, model: data.data?.[0]?.id || 'llama-3.3-70b-versatile' });
-      }
+      const [url, headers] = endpoints[id];
+      const res = await fetch(url, { headers: { Accept: 'application/json', ...headers } });
+      if (!res.ok) throw new ApiError(res.status === 429 ? 'RATE LIMITED' : res.status === 401 || res.status === 400 ? 'INVALID API KEY' : 'PROVIDER ERROR', `${PROVIDERS[id].label} test failed (HTTP ${res.status})`);
+      const data = await res.json();
+      const models = (data.models || data.data || []).map((m) => m.id || m.name || '').filter(Boolean);
+      const model = (id === 'gemini' ? models.find((m) => m.startsWith('gemini-')) : models[0]) || PROVIDERS[id].models[0];
+      return json(200, { ok: true, latencyMs: Date.now() - started, model, models });
     } catch (e) {
       return json(502, { error: e.message || 'Test failed', category: e.category || 'PROVIDER ERROR' });
     }
   }
 
   // ---- model discovery ----
-  if (method === 'GET' && /^\/api\/ai\/providers\/(gemini|groq)\/models$/.test(pathname)) {
+  if (method === 'GET' && /^\/api\/ai\/providers\/(gemini|groq|openai|anthropic)\/models$/.test(pathname)) {
     const id = pathname.split('/')[4];
     const key = getKey(id);
     if (!key) return json(400, { error: 'Not configured', category: 'CONFIGURATION ERROR' });
     try {
       const models = [];
-      if (id === 'gemini') {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key));
-        const data = await res.json();
-        (data.models || []).filter((m) => /gemini/.test(m.name)).slice(0, 24).forEach((m) => models.push(m.name.replace('models/', '')));
+      if (id === 'anthropic') {
+        // Anthropic has no public model-list endpoint — return the curated list.
+        models.push(...PROVIDERS.anthropic.models);
       } else {
-        const res = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` } });
+        const endpoints = {
+          gemini: ['https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key), {}],
+          groq: ['https://api.groq.com/openai/v1/models', { Authorization: `Bearer ${key}` }],
+          openai: ['https://api.openai.com/v1/models', { Authorization: `Bearer ${key}` }],
+        };
+        const [url, headers] = endpoints[id];
+        const res = await fetch(url, { headers: { Accept: 'application/json', ...headers } });
         const data = await res.json();
-        (data.data || []).slice(0, 24).forEach((m) => models.push(m.id));
+        const raw = data.models || data.data || [];
+        raw.slice(0, 40).forEach((m) => {
+          const name = m.id || m.name || '';
+          if (id === 'gemini' && !name.startsWith('gemini-')) return;
+          models.push(name.replace('models/', ''));
+        });
       }
       return json(200, { models: models.length ? models : PROVIDERS[id].models });
     } catch {

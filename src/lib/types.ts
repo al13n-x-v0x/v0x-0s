@@ -38,7 +38,10 @@ export type SectionId =
   | 'security'
   | 'remote'
   | 'recon'
-  | 'myapps';
+  | 'myapps'
+  | 'browser'
+  | 'systemtools'
+  | 'store';
 
 export interface NavItem {
   id: SectionId;
@@ -135,7 +138,7 @@ export interface TerminalSession {
 
 // ---------- AI ----------
 
-export type ProviderId = 'gemini' | 'groq';
+export type ProviderId = 'gemini' | 'groq' | 'openai' | 'anthropic';
 
 export interface ProviderConfig {
   id: ProviderId;

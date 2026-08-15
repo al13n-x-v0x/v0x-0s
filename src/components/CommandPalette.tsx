@@ -77,7 +77,10 @@ export function CommandPalette() {
         [/scan my project|health scan/, 'Run a health scan', () => void runHealthScan('project')],
         [/open github/, 'Open GitHub', () => setSection('github')],
         [/build errors|show errors/, 'Open the Error Center', () => setSection('errors')],
-        [/switch to (groq|gemini)/, 'Switch the AI provider', () => setSettings({ primaryProvider: q.includes('groq') ? 'groq' : 'gemini' })],
+        [/switch to (groq|gemini|openai|anthropic)/, 'Switch the AI provider', () => {
+          const found = ['groq', 'gemini', 'openai', 'anthropic'].find((p) => q.includes(p));
+          setSettings({ primaryProvider: (found ?? 'gemini') as never });
+        }],
         [/run (the )?tests/, 'Run the test suite', () => void testProject()],
         [/run (the )?build|build this/, 'Run a build', () => void buildProject()],
         [/run diagnostics/, 'Run auto diagnostics', () => void runDiagnostics()],

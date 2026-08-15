@@ -192,6 +192,27 @@ body {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
   pointer-events: none;
 }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--vox-line, rgba(148, 163, 184, 0.14));
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--vox-text, #dbe4f0);
+  transition: all 0.15s ease;
+}
+.icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(250, 30, 78, 0.4);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .glass-inset {
   background: rgba(5, 7, 12, 0.55);
   border: 1px solid var(--vox-line);

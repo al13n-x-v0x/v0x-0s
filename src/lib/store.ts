@@ -128,6 +128,10 @@ export interface VoxState {
   installedApps: { name: string; appId: string }[];
   appsLoading: boolean;
   appsError: string | null;
+  // ---- Windows system tools (via Desktop Agent) ----
+  sysTools: { id: string; label: string; icon: string; desc: string }[];
+  sysToolsLoading: boolean;
+  sysToolsError: string | null;
   // ---- github ----
   githubRepos: GithubRepo[];
   githubLoading: boolean;
@@ -258,6 +262,9 @@ export interface VoxState {
   // installed apps
   loadInstalledApps: () => Promise<void>;
   launchApp: (appId: string) => Promise<void>;
+  loadSysTools: () => Promise<void>;
+  openSysTool: (toolId: string) => Promise<void>;
+  storeInstall: (wingetId: string, name: string) => Promise<void>;
   // voice
   startListening: () => void;
   stopListening: () => void;
@@ -312,7 +319,7 @@ const DEFAULT_SETTINGS: Settings = {
   routingMode: 'auto',
   temperature: 0.7,
   maxTokens: 2048,
-  systemPrompt: 'You are VOX, the assistant built into the VOX-OS developer operating environment. Be concise and technical. When you perform an action in the system, say so in one short sentence. Never invent system data — if you lack telemetry, say so.',
+  systemPrompt: 'You are v0x-0s, the ultimate ultra-adaptive AI companion engineered for Elite Developers and Hardcore Gamers, built into the VOX-OS operating environment. Tone: high-energy, confident, deeply technical, slightly competitive. Style: hyper-concise, conversational, direct — zero fluff, no boilerplate, never "As an AI...". You auto-detect two modes: DEV_OPS_MAX (code, architecture, bugs, infrastructure — production-ready code first, then brief optimization notes) and META_GAMER_OS (games, builds, frame data, latency — exact numbers, meta builds, tables for comparisons). Merge both when the task overlaps. When you perform an action in the system, say so in one short sentence. Never invent system data — if you lack telemetry, say so.',
   defaultShell: 'powershell',
   performanceMode: 'balanced',
   gameProfile: 'balanced',
@@ -349,6 +356,8 @@ function defaultProviders(): Record<ProviderId, ProviderConfig> {
   return {
     gemini: { id: 'gemini', configured: false, maskedKey: null, model: 'gemini-2.0-flash', status: 'not_configured', envVar: 'GEMINI_API_KEY', label: 'Google Gemini' },
     groq: { id: 'groq', configured: false, maskedKey: null, model: 'llama-3.3-70b-versatile', status: 'not_configured', envVar: 'GROQ_API_KEY', label: 'Groq' },
+    openai: { id: 'openai', configured: false, maskedKey: null, model: 'gpt-4o-mini', status: 'not_configured', envVar: 'OPENAI_API_KEY', label: 'OpenAI (ChatGPT)' },
+    anthropic: { id: 'anthropic', configured: false, maskedKey: null, model: 'claude-sonnet-4-20250514', status: 'not_configured', envVar: 'ANTHROPIC_API_KEY', label: 'Anthropic Claude' },
   };
 }
 
@@ -477,7 +486,7 @@ export const useVox = create<VoxState>()(
       workspaces: [],
       backups: [],
       providers: defaultProviders(),
-      modelsUnavailable: { gemini: false, groq: false },
+      modelsUnavailable: { gemini: false, groq: false, openai: false, anthropic: false },
       aiMessages: [
         { role: 'assistant', content: 'Good afternoon, developer. All systems are operational. What shall we build?', time: now - 1000 * 60 * 60 },
       ],
@@ -502,6 +511,9 @@ export const useVox = create<VoxState>()(
       installedApps: [],
       appsLoading: false,
       appsError: null,
+      sysTools: [],
+      sysToolsLoading: false,
+      sysToolsError: null,
       githubRepos: [],
       githubLoading: false,
       githubError: null,
@@ -1057,8 +1069,8 @@ export const useVox = create<VoxState>()(
           const cfg = JSON.parse(json);
           const s = get().settings;
           const patch: Partial<Settings> = {};
-          if (cfg.primaryProvider === 'gemini' || cfg.primaryProvider === 'groq' || cfg.primaryProvider === 'auto') patch.primaryProvider = cfg.primaryProvider;
-          if (cfg.secondaryProvider === 'gemini' || cfg.secondaryProvider === 'groq') patch.secondaryProvider = cfg.secondaryProvider;
+          if (['gemini', 'groq', 'openai', 'anthropic', 'auto'].includes(cfg.primaryProvider)) patch.primaryProvider = cfg.primaryProvider;
+          if (['gemini', 'groq', 'openai', 'anthropic'].includes(cfg.secondaryProvider)) patch.secondaryProvider = cfg.secondaryProvider;
           if (['auto', 'primary', 'failover', 'dual'].includes(cfg.routingMode)) patch.routingMode = cfg.routingMode;
           if (typeof cfg.temperature === 'number') patch.temperature = clamp(cfg.temperature, 0, 2);
           if (typeof cfg.maxTokens === 'number') patch.maxTokens = cfg.maxTokens;
@@ -1348,6 +1360,53 @@ export const useVox = create<VoxState>()(
           });
         } catch (e) {
           get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'LAUNCH FAILED', body: e instanceof Error ? e.message : 'Unknown error' });
+        }
+      },
+      loadSysTools: async () => {
+        if (get().agentState.status !== 'connected') {
+          set({ sysToolsError: 'Desktop Agent offline — start it to see system tools.' });
+          return;
+        }
+        set({ sysToolsLoading: true, sysToolsError: null });
+        try {
+          const res = await agentClient.sysList();
+          set({ sysTools: res.tools ?? [], sysToolsLoading: false });
+        } catch (e) {
+          set({ sysToolsLoading: false, sysToolsError: e instanceof Error ? e.message : 'Failed to load system tools' });
+        }
+      },
+      openSysTool: async (toolId) => {
+        if (get().agentState.status !== 'connected') {
+          get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'AGENT OFFLINE', body: 'Cannot open system tools — Desktop Agent disconnected.' });
+          return;
+        }
+        try {
+          const res = await agentClient.sysOpen(toolId);
+          get().pushNotification({
+            category: 'SYSTEM',
+            severity: res.ok ? 'success' : 'warning',
+            title: res.ok ? 'SYSTEM TOOL OPENED' : 'OPEN FAILED',
+            body: res.ok ? (res.label ?? 'Opened on your PC.') : (res.reason ?? 'Unknown error'),
+          });
+          if (res.ok) sfx.success();
+        } catch (e) {
+          get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'OPEN FAILED', body: e instanceof Error ? e.message : 'Unknown error' });
+        }
+      },
+      storeInstall: async (wingetId, name) => {
+        // Opens a terminal and runs the winget install — real execution when the
+        // agent is connected, simulated otherwise.
+        const cmd = `winget install --id ${wingetId} --accept-package-agreements --accept-source-agreements --silent`;
+        const s = get();
+        if (s.agentState.status === 'connected') {
+          s.newTerminal(s.settings.defaultShell);
+          const id = s.terminalActive;
+          s.setSection('terminal');
+          setTimeout(() => get().terminalInput(id, cmd), 400);
+          get().pushNotification({ category: 'STORE', severity: 'success', title: 'INSTALL STARTED', body: `${name} — winget install launched in Terminal.` });
+        } else {
+          try { await navigator.clipboard.writeText(cmd); } catch { /* ignore */ }
+          get().pushNotification({ category: 'STORE', severity: 'info', title: 'COMMAND COPIED', body: `Agent offline — winget command for ${name} copied to clipboard.` });
         }
       },
       wireAgent: (hello: AgentHello) => {

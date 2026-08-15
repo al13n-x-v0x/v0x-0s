@@ -45,7 +45,48 @@ const DEFAULT_PERMS = {
   FILES: 'prompt',
   GPU: 'prompt',
   APPS: 'prompt',            // list + launch installed applications
+  SYSTEM_APPS: 'prompt',     // open Windows built-in system tools (Disk Mgmt, Task Mgr…)
 };
+
+// Windows built-in system tools. Each entry is a fixed command — no user input
+// ever reaches spawn, so this is an allowlist by construction.
+const SYSTEM_TOOLS = {
+  diskmgmt: { label: 'Disk Management', cmd: 'diskmgmt.msc', icon: 'HardDrive', desc: 'Drives, partitions, volumes — resize, format, assign letters.' },
+  devmgmt: { label: 'Device Manager', cmd: 'devmgmt.msc', icon: 'Cpu', desc: 'Hardware devices, drivers, resources.' },
+  taskmgr: { label: 'Task Manager', cmd: 'taskmgr.exe', icon: 'Activity', desc: 'Processes, performance, startup, app history.' },
+  msinfo32: { label: 'System Information', cmd: 'msinfo32.exe', icon: 'Info', desc: 'Full hardware + software inventory.' },
+  resmon: { label: 'Resource Monitor', cmd: 'resmon.exe', icon: 'BarChart3', desc: 'Live CPU, RAM, disk, network graphs.' },
+  perfmon: { label: 'Performance Monitor', cmd: 'perfmon.msc', icon: 'LineChart', desc: 'System performance counters & data sets.' },
+  ncpa: { label: 'Network Connections', cmd: 'ncpa.cpl', icon: 'Wifi', desc: 'Adapters, IP config, diagnostics.' },
+  appwiz: { label: 'Programs & Features', cmd: 'appwiz.cpl', icon: 'Package', desc: 'Uninstall, change, repair installed programs.' },
+  services: { label: 'Services', cmd: 'services.msc', icon: 'Server', desc: 'Windows services manager.' },
+  compmgmt: { label: 'Computer Management', cmd: 'compmgmt.msc', icon: 'Monitor', desc: 'Disk mgmt, event logs, users, services in one.' },
+  eventvwr: { label: 'Event Viewer', cmd: 'eventvwr.msc', icon: 'ScrollText', desc: 'System, application and security logs.' },
+  cleanmgr: { label: 'Disk Cleanup', cmd: 'cleanmgr.exe', icon: 'Trash2', desc: 'Free space by cleaning temp + cache files.' },
+  powercfg: { label: 'Power Options', cmd: 'powercfg.cpl', icon: 'BatteryCharging', desc: 'Plans, sleep, battery settings.' },
+  sysdm: { label: 'System Properties', cmd: 'sysdm.cpl', icon: 'Settings2', desc: 'Advanced system settings, performance, environment.' },
+  dxdiag: { label: 'DirectX Diagnostic', cmd: 'dxdiag.exe', icon: 'Gamepad2', desc: 'Display, sound, input diagnostics.' },
+  settings: { label: 'Windows Settings', cmd: 'ms-settings:', icon: 'SlidersHorizontal', desc: 'Modern Windows settings hub (ms-settings).' },
+};
+
+function openSystemTool(id) {
+  const t = SYSTEM_TOOLS[id];
+  if (!t) return { ok: false, reason: `unknown system tool: ${id}` };
+  try {
+    if (t.cmd.startsWith('ms-settings:')) {
+      // URI scheme — route through explorer so the right handler opens it.
+      spawn('explorer.exe', [t.cmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } else if (/\.(msc|cpl)$/i.test(t.cmd)) {
+      // MMC consoles + control-panel applets are not executables — shell them via cmd start.
+      spawn('cmd.exe', ['/c', 'start', '', t.cmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    } else {
+      spawn(t.cmd, [], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    }
+    return { ok: true, tool: id, label: t.label };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+}
 
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch { return null; }
@@ -303,6 +344,19 @@ wss.on('connection', (ws, req) => {
       if (!msg.appId) return send(ws, { id: msg.id, ok: false, reason: 'missing appId' });
       const res = await appsLaunch(String(msg.appId));
       return send(ws, { id: msg.id, ok: res.ok, reason: res.reason });
+    }
+    // ---- Windows built-in system tools ----
+    if (msg.type === 'sys_open') {
+      const r = await hasPermission('SYSTEM_APPS');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      if (!msg.tool) return send(ws, { id: msg.id, ok: false, reason: 'missing tool id' });
+      const res = openSystemTool(String(msg.tool));
+      return send(ws, { id: msg.id, ok: res.ok, reason: res.reason, label: res.label });
+    }
+    if (msg.type === 'sys_list') {
+      return send(ws, {
+        id: msg.id, ok: true, tools: Object.entries(SYSTEM_TOOLS).map(([id, t]) => ({ id, label: t.label, icon: t.icon, desc: t.desc })),
+      });
     }
     // ---- shell sessions ----
     if (msg.type === 'exec_open') {

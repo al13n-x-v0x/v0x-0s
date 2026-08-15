@@ -78,6 +78,8 @@ export function Onboarding() {
                 {[
                   { id: 'gemini', label: 'GEMINI', env: 'GEMINI_API_KEY', color: '#3b82f6' },
                   { id: 'groq', label: 'GROQ', env: 'GROQ_API_KEY', color: '#f97316' },
+                  { id: 'openai', label: 'OPENAI', env: 'OPENAI_API_KEY', color: '#10a37f' },
+                  { id: 'anthropic', label: 'CLAUDE', env: 'ANTHROPIC_API_KEY', color: '#d97757' },
                 ].map((p) => (
                   <button key={p.id} onClick={() => { s.setSection('apimanager'); setDone(); }} className="glass-inset p-3.5 text-left hover:bg-white/[0.04] transition-colors">
                     <span className="w-2.5 h-2.5 rounded-full mb-2" style={{ background: p.color, boxShadow: `0 0 8px ${p.color}` }} />

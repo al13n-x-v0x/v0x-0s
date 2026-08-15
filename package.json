@@ -1,9 +1,10 @@
 {
   "name": "v0x-0s",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "VOX-OS — A Dev's First Choice. A futuristic developer operating environment.",
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -11,11 +12,13 @@
     "preview": "vite preview",
     "server": "node server/index.js",
     "agent": "node agent/index.js",
+    "desktop": "npm run build && electron .",
     "dev:all": "node server/index.js & vite",
     "dev:all:win": "start /b node server/index.js && vite",
     "apk:sync": "npm run build && npx cap sync android",
     "apk:build": "npm run build && npx cap sync android && cd android && gradlew assembleDebug",
-    "apk:release": "npm run build && npx cap sync android && cd android && gradlew assembleRelease"
+    "apk:release": "npm run build && npx cap sync android && cd android && gradlew assembleRelease",
+    "exe:build": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -38,9 +41,47 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
     "vite": "^5.4.3"
+  },
+  "build": {
+    "appId": "com.voxos.desktop",
+    "productName": "VOX-OS",
+    "asar": true,
+    "asarUnpack": [
+      "agent/**/*",
+      "server/**/*"
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "agent/**/*",
+      "server/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "public/vox.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VOX-OS"
+    }
   }
 }

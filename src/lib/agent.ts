@@ -156,6 +156,12 @@ class VoxAgentClient {
   appsLaunch(appId: string): Promise<{ ok: boolean; reason?: string }> {
     return this.request('apps_launch', { appId }, 30000).then((m) => ({ ok: !!m.ok, reason: m.reason }));
   }
+  sysList(): Promise<{ tools: { id: string; label: string; icon: string; desc: string }[] }> {
+    return this.request('sys_list', {}, 15000).then((m) => ({ tools: m.tools || [] }));
+  }
+  sysOpen(tool: string): Promise<{ ok: boolean; reason?: string; label?: string }> {
+    return this.request('sys_open', { tool }, 20000).then((m) => ({ ok: !!m.ok, reason: m.reason, label: m.label }));
+  }
   // NOTE: session ids travel in a dedicated `sid` field so they never
   // collide with the request correlation `id` on the wire.
   execOpen(sid: string, shell: string, cwd?: string): Promise<any> { return this.request('exec_open', { sid, shell, cwd }); }

@@ -19,6 +19,14 @@ export function MyApps() {
     if (agentOnline) void load();
   }, [agentOnline, load]);
 
+  // auto-sync: re-scan every 60s while the agent is linked so newly
+  // installed apps appear without pressing refresh
+  useEffect(() => {
+    if (!agentOnline) return;
+    const t = window.setInterval(() => void load(), 60_000);
+    return () => window.clearInterval(t);
+  }, [agentOnline, load]);
+
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
     if (!query) return apps;

@@ -36,6 +36,9 @@ import {
 import { MobileRemote } from './apps/MobileRemote';
 import { ReconLab } from './apps/ReconLab';
 import { MyApps } from './apps/MyApps';
+import { BrowserApp } from './apps/BrowserApp';
+import { SystemTools } from './apps/SystemTools';
+import { VoxStore } from './apps/VoxStore';
 import { SecurityCenter } from './apps/SecurityCenter';
 
 const SECTION_APPS: Record<string, () => ReactNode> = {
@@ -54,6 +57,7 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   apimanager: () => <ApiManager />,
   automation: () => <Automation />,
   gaming: () => <Gaming />,
+  browser: () => <BrowserApp />,
   extensions: () => <Extensions />,
   marketplace: () => <Extensions marketplace />,
   settings: () => <Settings />,
@@ -63,6 +67,8 @@ const SECTION_APPS: Record<string, () => ReactNode> = {
   security: () => <SecurityCenter />,
   recon: () => <ReconLab />,
   myapps: () => <MyApps />,
+  systemtools: () => <SystemTools />,
+  store: () => <VoxStore />,
   diagnostics: () => <Diagnostics />,
   memory: () => <Memory />,
   backup: () => <Backup />,

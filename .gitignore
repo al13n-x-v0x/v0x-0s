@@ -20,3 +20,7 @@ Thumbs.db
 
 # tool state
 .freebuff/
+
+# build output + companion repo
+release/
+iso-repo/

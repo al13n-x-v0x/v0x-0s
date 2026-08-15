@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useVox } from '../lib/store';
+import type { ProviderId } from '../lib/types';
+import { PROVIDERS } from '../lib/constants';
 import { Badge, Button, Icon, Panel, StatusDot, useAutoScroll } from '../components/ui';
 import { VoxCore, useCoreState } from '../components/VoxCore';
 import { timeAgo, fmtDuration } from '../lib/fmt';
@@ -37,14 +39,14 @@ export function VoxAI() {
             <p className="text-[10px] text-vox-muted font-mono tracking-[0.18em] mt-0.5">MULTI-MODEL INTELLIGENCE SYSTEM</p>
           </div>
           <div className="flex items-center gap-3">
-            {s.providers.gemini.configured || s.providers.groq.configured ? (
+            {PROVIDERS.some((p) => s.providers[p.id]?.configured) ? (
               <Badge tone="green"><span className="dot dot-online" /> ONLINE</Badge>
             ) : s.settings.demoAssistant ? (
               <Badge tone="amber">DEMO ASSISTANT{s.backend === 'offline' ? ' · BACKEND OFFLINE' : ''}</Badge>
             ) : (
               <Badge tone="red">AI NOT CONFIGURED</Badge>
             )}
-            <Badge tone="cyan">{s.providers[s.settings.primaryProvider === 'auto' ? 'gemini' : (s.settings.primaryProvider as 'gemini' | 'groq')].model}</Badge>
+            <Badge tone="cyan">{s.providers[s.settings.primaryProvider === 'auto' ? 'gemini' : (s.settings.primaryProvider as ProviderId)].model}</Badge>
           </div>
         </div>
 

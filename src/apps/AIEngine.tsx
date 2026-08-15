@@ -43,25 +43,27 @@ export function AIEngine() {
 
       {tab === 'providers' && (
         <>
-          {!s.providers.gemini.configured && !s.providers.groq.configured && (
+          {!PROVIDERS.some((p) => s.providers[p.id]?.configured) && (
             <div className="glass-inset border-violet-400/20 px-4 py-3.5 flex flex-wrap items-center gap-3">
               <Icon name="Sparkles" size={16} className="text-violet-400" />
               <div className="flex-1 min-w-[240px]">
                 <p className="text-[12px] font-semibold text-vox-text">VOX AI IS NOT CONFIGURED</p>
                 <p className="text-[11px] text-vox-muted mt-0.5">Configure an AI provider to enable intelligent features. The rest of VOX-OS works without AI.</p>
               </div>
-              <Button size="xs" variant="cyan" onClick={() => setConfigId('gemini')}>CONFIGURE GEMINI</Button>
-              <Button size="xs" onClick={() => setConfigId('groq')}>CONFIGURE GROQ</Button>
+              {PROVIDERS.slice(0, 2).map((p) => (
+                <Button key={p.id} size="xs" variant="cyan" onClick={() => setConfigId(p.id)}>CONFIGURE {p.label.toUpperCase()}</Button>
+              ))}
               <Button size="xs" variant="ghost" onClick={() => s.setSection('dashboard')}>CONTINUE WITHOUT AI</Button>
             </div>
           )}
           <div className="grid md:grid-cols-2 gap-4">
-            <ProviderCard id="gemini" onConfigure={() => setConfigId('gemini')} onRemove={() => setRemoveId('gemini')} onTest={() => void s.testProviderConn('gemini')} onModel={() => void s.refreshModels('gemini')} />
-            <ProviderCard id="groq" onConfigure={() => setConfigId('groq')} onRemove={() => setRemoveId('groq')} onTest={() => void s.testProviderConn('groq')} onModel={() => void s.refreshModels('groq')} />
+            {PROVIDERS.map((p) => (
+              <ProviderCard key={p.id} id={p.id} onConfigure={() => setConfigId(p.id)} onRemove={() => setRemoveId(p.id)} onTest={() => void s.testProviderConn(p.id)} onModel={() => void s.refreshModels(p.id)} />
+            ))}
           </div>
           <Panel title="Provider Health" icon="HeartPulse" bodyClassName="!p-3">
             <div className="grid md:grid-cols-2 gap-3">
-              {(['gemini', 'groq'] as ProviderId[]).map((id) => {
+              {PROVIDERS.map((p) => p.id).map((id) => {
                 const p = s.providers[id];
                 return (
                   <div key={id} className="glass-inset px-3 py-2.5 flex items-center gap-3">
@@ -136,7 +138,7 @@ export function AIEngine() {
 
       {tab === 'models' && (
         <div className="grid md:grid-cols-2 gap-4">
-          {(['gemini', 'groq'] as ProviderId[]).map((id) => (
+          {PROVIDERS.map((p) => p.id).map((id) => (
             <Panel key={id} title={`${id.toUpperCase()} Models`} icon="Cpu"
               actions={<Button size="xs" variant="cyan" icon="RefreshCw" onClick={() => void s.refreshModels(id)}>REFRESH MODELS</Button>}>
               <div className="space-y-1.5">
