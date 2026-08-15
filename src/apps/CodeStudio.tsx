@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useVox } from '../lib/store';
 import { readFile, writeFile, fileExt, isSecretPath } from '../lib/vfs';
@@ -16,6 +16,13 @@ export function CodeStudio() {
   const content = useMemo(() => (active && file ? readFile(active.fs, file.split('/')) : null), [active, file, s.projects]);
   const dirty = file ? !!s.dirty[file] : false;
   const [showTree, setShowTree] = useState(true);
+
+  // when the Desktop Agent's real file access is armed, pull the project's
+  // files from ~/VOX-OS/projects/<slug> into the in-memory tree (merge)
+  useEffect(() => {
+    if (active && s.diskFs.ready) void s.syncProjectFromDisk(active.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.diskFs.ready, active?.id]);
 
   if (!active) return <div className="p-10 text-center text-vox-dim">No project open.</div>;
 
@@ -48,6 +55,7 @@ export function CodeStudio() {
         <div className="w-px h-4 bg-vox-line" />
         <Badge tone="cyan">{active.name}</Badge>
         <Badge tone="dim">{active.language}</Badge>
+        {s.diskFs.ready && <Badge tone="green">DISK</Badge>}
         {file && <Badge tone={dirty ? 'amber' : 'green'}>{dirty ? '● UNSAVED' : '✓ SAVED'}</Badge>}
         <div className="ml-auto flex items-center gap-1.5">
           <Button size="xs" variant="violet" icon="Sparkles" onClick={() => s.explainWithVox(`Explain the file ${file ?? ''} in ${active.name}. Be concise and technical.`)}>VOX EXPLAIN</Button>

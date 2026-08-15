@@ -80,8 +80,20 @@ function createWindow() {
   });
 
   const index = path.join(ROOT, 'dist', 'index.html');
+  // First EXE launch → open the Phone Pairing screen automatically so the
+  // user can connect their phone with one QR scan. The flag lives in userData.
+  const firstRunFile = path.join(app.getPath('userData'), 'first-run.json');
+  const isFirstRun = !fs.existsSync(firstRunFile);
+  if (isFirstRun) {
+    try { fs.writeFileSync(firstRunFile, JSON.stringify({ firstRunAt: Date.now() })); } catch { /* ignore */ }
+  }
   if (fs.existsSync(index)) {
     mainWindow.loadFile(index);
+    if (isFirstRun) {
+      mainWindow.webContents.once('did-finish-load', () => {
+        try { mainWindow.webContents.executeJavaScript(`window.location.hash = 'pairing';`); } catch { /* ignore */ }
+      });
+    }
   } else {
     dialog.showErrorBox('VOX-OS', 'dist/ not found. Run `npm run build` first.');
   }

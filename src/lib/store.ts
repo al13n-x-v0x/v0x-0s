@@ -12,7 +12,7 @@ import { runCommand, sessionPrompt } from './shell';
 import { computeChecks, computeScore, SCAN_STEPS, STEP_LABELS } from './health';
 import { sampleDemo, systemProbe, batteryProbe, realMemoryUsage, browserInfo, sttSupported, ttsSupported } from './telemetry';
 import { detectOS, detectRobloxCompat, detectBrowser, detectGPU, suggestProfile, type OSInfo, type RobloxCompat, type GPUInfo } from './os';
-import { agentClient, type AgentHello, type AgentStats } from './agent';
+import { agentClient, type AgentHello, type AgentStats, type DiskEntry } from './agent';
 import { streamChat, pingBackend, testProvider, saveProviderKey, removeProviderKey, fetchModels, githubStatus, fetchGithubRepos, saveGithubToken, removeGithubToken, scanGithubRepo as apiScanGithubRepo, fetchGithubBranches, fetchGithubCommits, fetchGithubIssues, fetchGithubPulls, createGithubRepo, pushGithubCommit, demoReply, classifyTask, routerEntry, setApiBase, BackendStatus } from './ai';
 import type { GithubSecretFinding, GithubBranch, GithubCommit, GithubIssue, GithubPull } from './ai';
 import { sfx, configureSound } from './sounds';
@@ -22,6 +22,12 @@ import { clamp, maskKey, timeAgo, uid } from './fmt';
 import { writeFile, readFile, addNode, removeNode, renameNode, countFiles, walk } from './vfs';
 import { scanForSecrets } from './secrets';
 import { diffLines } from './devtools';
+
+/** Folder name for a project inside ~/VOX-OS/projects (agent FS mirror). */
+function diskSlug(name: string): string {
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'project';
+}
 
 export interface MemoryItem {
   id: string;
@@ -166,6 +172,8 @@ export interface VoxState {
   /** laptop backend this client is paired with (phone → laptop) */
   pairHost: string | null;
   pairToken: string | null;
+  /** real workspace files on disk via the Desktop Agent (~/VOX-OS) */
+  diskFs: { ready: boolean; root: string | null; error: string | null };
   // ---- actions ----
   boot: () => void;
   finishBoot: () => void;
@@ -281,6 +289,12 @@ export interface VoxState {
   applyPairing: (host: string, token: string) => void;
   /** read ?pair= from the URL + listen for voxos:// deep links */
   initPairing: () => void;
+  /** arm ~/VOX-OS real-file access once the agent reports the FILES capability */
+  agentDiskInit: () => Promise<void>;
+  /** pull real files from ~/VOX-OS/projects/<slug> into the in-memory project */
+  syncProjectFromDisk: (projectId: string) => Promise<void>;
+  /** mirror a VFS operation to real disk (no-op when the agent FS is not armed) */
+  diskMirror: (path: string, op: 'write' | 'mkdir' | 'delete' | 'rename', data?: string, to?: string) => void;
   addVoiceHistory: (text: string) => void;
   setVoiceStatus: (s: VoiceState['status'], error?: string) => void;
   executeVoiceCommand: (text: string) => string;
@@ -542,6 +556,7 @@ export const useVox = create<VoxState>()(
       voice: initialVoice,
       pairHost: null,
       pairToken: null,
+      diskFs: { ready: false, root: null, error: null },
 
       // ================= SHELL =================
       boot: () => {
@@ -600,6 +615,15 @@ export const useVox = create<VoxState>()(
             void App.addListener('appUrlOpen', (data: { url: string }) => handle(data.url));
           }).catch(() => undefined);
         } catch { /* web build */ }
+        // Electron EXE first-run: the desktop app loads #pairing so the pairing
+        // screen opens automatically on the very first launch.
+        try {
+          const onHash = () => {
+            if (window.location.hash.replace(/^#/, '') === 'pairing') get().setSection('pairing');
+          };
+          window.addEventListener('hashchange', onHash);
+          onHash();
+        } catch { /* ignore */ }
       },
       setOnboardingDone: () => set({ onboardingDone: true }),
       setSection: (s) => {
@@ -874,6 +898,7 @@ export const useVox = create<VoxState>()(
           dirty: { ...get().dirty, [path]: false },
         });
         get().logEvent('PROJECT', `Saved ${path}`, 'info');
+        get().diskMirror(path, 'write', content);
       },
       setFileDirty: (path, d) => set({ dirty: { ...get().dirty, [path]: d } }),
       createNode: (dir, name, kind, content = '') => {
@@ -882,6 +907,8 @@ export const useVox = create<VoxState>()(
           projects: get().projects.map((pr) => (pr.id === pid ? { ...pr, fs: addNode(pr.fs, dir, name, kind, content), lastModified: Date.now() } : pr)),
         });
         get().logEvent('PROJECT', `Created ${kind} ${[...dir, name].join('/')}`, 'info');
+        if (kind === 'dir') get().diskMirror([...dir, name].join('/'), 'mkdir');
+        else get().diskMirror([...dir, name].join('/'), 'write', content);
       },
       deleteNode: (dir, name) => {
         const pid = get().activeProjectId;
@@ -891,6 +918,7 @@ export const useVox = create<VoxState>()(
           codeTabs: { ...get().codeTabs, [pid]: (get().codeTabs[pid] ?? []).filter((t) => t !== pathStr) },
         });
         get().logEvent('PROJECT', `Deleted ${pathStr}`, 'warning');
+        get().diskMirror(pathStr, 'delete');
       },
       renameNodeOp: (dir, oldName, newName) => {
         const pid = get().activeProjectId;
@@ -898,6 +926,7 @@ export const useVox = create<VoxState>()(
           projects: get().projects.map((pr) => (pr.id === pid ? { ...pr, fs: renameNode(pr.fs, dir, oldName, newName), lastModified: Date.now() } : pr)),
         });
         get().logEvent('PROJECT', `Renamed ${oldName} → ${newName}`, 'info');
+        get().diskMirror([...dir, oldName].join('/'), 'rename', undefined, [...dir, newName].join('/'));
       },
 
       // ================= TERMINAL =================
@@ -1489,6 +1518,7 @@ export const useVox = create<VoxState>()(
         // subscribe to live stats + open real shell sessions for existing terminals
         agentClient.subscribe(2000).catch(() => undefined);
         void agentClient.stats().then((s) => get().applyAgentStats(s)).catch(() => undefined);
+        if (hello.caps.includes('FILES')) void get().agentDiskInit();
         for (const t of get().terminalSessions) void get().agentOpenSession(t.id);
         // event wiring
         agentClient.on('event:exec_out', (m) => get().agentExecChunk(m, 'out'));
@@ -1526,6 +1556,67 @@ export const useVox = create<VoxState>()(
           set({ terminalSessions: get().terminalSessions.map((t) => (t.id === sessionId ? { ...t, agentMode: false, agentSessionId: undefined } : t)) });
           get().pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'AGENT SHELL DENIED', body: msg || 'Could not open a real shell session.' });
         }
+      },
+      // ---- real workspace files on disk (agent FILES capability) ----
+      agentDiskInit: async () => {
+        if (get().agentState.status !== 'connected') return;
+        try {
+          const { root } = await agentClient.fsRoot();
+          set({ diskFs: { ready: true, root, error: null } });
+          get().logEvent('SYSTEM', `Real workspace files armed → ${root}`, 'info');
+          for (const p of get().projects) void get().syncProjectFromDisk(p.id);
+        } catch (e) {
+          set({ diskFs: { ready: false, root: null, error: e instanceof Error ? e.message : 'FILES capability unavailable — restart the agent with --allow FILES' } });
+        }
+      },
+      syncProjectFromDisk: async (projectId) => {
+        const st = get();
+        if (!st.diskFs.ready || st.agentState.status !== 'connected') return;
+        const p = st.projects.find((pr) => pr.id === projectId);
+        if (!p) return;
+        const slug = diskSlug(p.name);
+        const base = `projects/${slug}`;
+        let fsTree = p.fs;
+        const pull = async (rel: string, dirPath: string[]) => {
+          let entries: DiskEntry[];
+          try { entries = await agentClient.fsList(rel); } catch { return; }
+          for (const e of entries) {
+            if (e.isDir) {
+              fsTree = addNode(fsTree, dirPath, e.name, 'dir');
+              await pull(rel ? `${rel}/${e.name}` : e.name, [...dirPath, e.name]);
+            } else if (e.size <= 2 * 1024 * 1024) {
+              try {
+                const data = await agentClient.fsRead(rel ? `${rel}/${e.name}` : e.name);
+                fsTree = writeFile(fsTree, [...dirPath, e.name], data);
+              } catch { /* skip unreadable */ }
+            }
+          }
+        };
+        try {
+          const rootEntries = await agentClient.fsList(base).catch(() => [] as DiskEntry[]);
+          if (rootEntries.length === 0) return; // no disk folder yet — stay in sandbox
+          for (const e of rootEntries) {
+            if (e.isDir) {
+              fsTree = addNode(fsTree, [], e.name, 'dir');
+              await pull(`${base}/${e.name}`, [e.name]);
+            } else if (e.size <= 2 * 1024 * 1024) {
+              try { fsTree = writeFile(fsTree, [e.name], await agentClient.fsRead(`${base}/${e.name}`)); } catch { /* skip */ }
+            }
+          }
+          set({ projects: get().projects.map((pr) => (pr.id === projectId ? { ...pr, fs: fsTree, lastModified: Date.now() } : pr)) });
+          get().logEvent('PROJECT', `Synced ${p.name} with real files from ~/VOX-OS/projects/${slug}`, 'info');
+        } catch { /* disk unreachable — sandbox mode */ }
+      },
+      diskMirror: (path, op, data, to) => {
+        const st = get();
+        if (!st.diskFs.ready || st.agentState.status !== 'connected') return;
+        const slug = diskSlug(st.projects.find((p) => p.id === st.activeProjectId)?.name ?? 'project');
+        const rel = `projects/${slug}/${path}`;
+        const fail = () => get().logEvent('PROJECT', `Disk ${op} failed: ${path}`, 'warning');
+        if (op === 'write') void agentClient.fsWrite(rel, data ?? '').catch(fail);
+        else if (op === 'mkdir') void agentClient.fsMkdir(rel).catch(fail);
+        else if (op === 'delete') void agentClient.fsDelete(rel).catch(fail);
+        else if (op === 'rename' && to) void agentClient.fsRename(rel, `projects/${slug}/${to}`).catch(fail);
       },
       applyAgentStats: (s: AgentStats) => {
         set({

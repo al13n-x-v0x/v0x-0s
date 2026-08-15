@@ -16,9 +16,19 @@ interface PairingInfo {
   port: number;
   lan: { name: string; address: string }[];
   pairToken: string;
+  expiresAt?: number;
+  revoked?: boolean;
+  ttlMs?: number;
   agent: { port: number; hostname: string } | null;
   remote: boolean;
   hostname: string;
+}
+
+function fmtRemaining(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60_000));
+  if (m <= 0) return 'expired';
+  const h = Math.floor(m / 60);
+  return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
 async function genQR(text: string): Promise<string> {
@@ -37,6 +47,15 @@ export function Pairing() {
   const [qrs, setQrs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [pairUrl, setPairUrl] = useState('');
+  const [revoked, setRevoked] = useState(false);
+  const [expiry, setExpiry] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+
+  // refresh the expiry countdown every 30s
+  useEffect(() => {
+    const iv = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(iv);
+  }, []);
 
   const pairedHost = s.pairHost;
   const pairedToken = s.pairToken;
@@ -51,8 +70,10 @@ export function Pairing() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as PairingInfo;
       setInfo(data);
+      setRevoked(!!data.revoked);
+      setExpiry(data.expiresAt ?? null);
       // QR for the first LAN address (plus whatever the pair token is)
-      const t = data.pairToken || pairedToken || '';
+      const t = !data.revoked ? (data.pairToken || pairedToken || '') : '';
       const host = data.lan[0]?.address;
       if (host && t) {
         const base = `http://${host}:${data.port}`;
@@ -78,6 +99,8 @@ export function Pairing() {
       const res = await fetch('/api/pairing/rotate', { method: 'POST' });
       const data = (await res.json()) as { pairToken?: string };
       if (data.pairToken) {
+        setRevoked(false);
+        setExpiry(Date.now() + (info?.ttlMs ?? 24 * 60 * 60 * 1000));
         setInfo((prev) => (prev ? { ...prev, pairToken: data.pairToken! } : prev));
         const host = info?.lan[0]?.address;
         if (host && info) {
@@ -100,6 +123,23 @@ export function Pairing() {
     s.pushNotification({ category: 'SYSTEM', severity: 'success', title: 'COPIED', body: `${label} copied to clipboard.` });
   };
 
+  const revoke = async () => {
+    if (!confirm('Revoke pairing? Every existing QR link and connected phone session will be killed immediately.')) return;
+    sfx.command();
+    setBusy(true);
+    try {
+      const res = await fetch('/api/pairing/revoke', { method: 'POST' });
+      const data = (await res.json()) as { ok?: boolean; pairToken?: string };
+      if (data.ok) {
+        setRevoked(true);
+        setExpiry(null);
+        setQrs({});
+        setPairUrl('');
+        s.pushNotification({ category: 'SYSTEM', severity: 'warning', title: 'PAIRING REVOKED', body: 'All existing pairing links and phone sessions are dead.' });
+      }
+    } catch { /* ignore */ } finally { setBusy(false); }
+  };
+
   const connectBridge = async () => {
     if (!pairedToken) return;
     sfx.command();
@@ -119,6 +159,7 @@ export function Pairing() {
           <Badge tone={connected ? 'green' : 'dim'}>
             <span className={connected ? 'dot dot-online' : 'dot dot-dim'} /> {connected ? 'AGENT LINKED' : 'AGENT —'}
           </Badge>
+          <Badge tone={revoked ? 'amber' : expiry ? 'cyan' : 'dim'}>{revoked ? 'PAIRING REVOKED' : expiry ? `TOKEN ${fmtRemaining(expiry - Date.now())}` : 'TOKEN —'}</Badge>
           <Button size="xs" variant="ghost" icon="RefreshCw" onClick={() => void load()} disabled={busy}>REFRESH</Button>
         </div>
       </div>
@@ -145,8 +186,18 @@ export function Pairing() {
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* QR panel */}
-        <Panel title="Scan to control this laptop" icon="QrCode" glow="cyan">
-          {!qrs.web && !error && (
+        <Panel title="Scan to control this laptop" icon="QrCode" glow={revoked ? 'violet' : 'cyan'}>
+          {revoked && !qrs.web && (
+            <div className="py-8 text-center">
+              <Icon name="Unplug" size={26} className="text-amber-400 mx-auto mb-3" />
+              <p className="text-[13px] font-semibold text-amber-200">PAIRING REVOKED</p>
+              <p className="text-[11.5px] text-vox-muted mt-1.5 max-w-sm mx-auto leading-relaxed">Every existing QR link and connected phone session has been killed. Generate a new token to re-enable remote control — the old token is permanently dead.</p>
+              <div className="mt-4">
+                <Button size="xs" variant="cyan" icon="KeyRound" onClick={() => void rotate()} disabled={busy}>GENERATE NEW TOKEN</Button>
+              </div>
+            </div>
+          )}
+          {!qrs.web && !error && !revoked && (
             <div className="py-8 text-center text-[12px] text-vox-dim font-mono">{busy ? 'GENERATING QR…' : 'Waiting for the backend…'}</div>
           )}
           {qrs.web && (
@@ -165,8 +216,9 @@ export function Pairing() {
                 <div className="flex gap-1.5 mt-2 flex-wrap">
                   <Button size="xs" variant="cyan" icon="Copy" onClick={() => void copy(`${pairUrl}/?pair=${encodeURIComponent(token)}`, 'Pairing URL')}>COPY URL</Button>
                   <Button size="xs" variant="ghost" icon="RefreshCw" onClick={() => void rotate()} disabled={busy}>NEW TOKEN</Button>
+                  <Button size="xs" variant="danger" icon="Unplug" onClick={() => void revoke()} disabled={busy}>REVOKE</Button>
                 </div>
-                <p className="text-[10.5px] text-vox-muted mt-3 leading-relaxed">Same Wi-Fi required. The phone's camera can scan either QR — browsers and the VOX-OS app both land on the full remote desktop.</p>
+                <p className="text-[10.5px] text-vox-muted mt-3 leading-relaxed">Same Wi-Fi required. The phone's camera can scan either QR — browsers and the VOX-OS app both land on the full remote desktop. Tokens expire automatically after {info?.ttlMs ? Math.round(info.ttlMs / 3_600_000) : 24}h — rotate or revoke any time.</p>
               </div>
             </div>
           )}

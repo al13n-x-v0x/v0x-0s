@@ -67,17 +67,44 @@ function getGithubToken() {
 // the laptop through the agent bridge. It NEVER replaces the agent token —
 // it only gates the /ws/agent bridge, which injects the real agent token.
 const pairFile = path.join(__dirname, '.vox-pair.json');
+const PAIR_TTL_MS = 24 * 60 * 60 * 1000; // pairing tokens expire after 24h
+/** active remote bridge sockets — revoked on demand via /api/pairing/revoke */
+const bridgedClients = new Set();
 function loadPair() {
   try { return JSON.parse(fs.readFileSync(pairFile, 'utf8')); } catch { return {}; }
 }
 function rotatePairToken() {
   const token = crypto.randomBytes(18).toString('base64url');
-  try { fs.writeFileSync(pairFile, JSON.stringify({ token, createdAt: Date.now() }), { mode: 0o600 }); } catch { /* non-fatal */ }
+  try {
+    fs.writeFileSync(pairFile, JSON.stringify({ token, createdAt: Date.now(), expiresAt: Date.now() + PAIR_TTL_MS, disabled: false }), { mode: 0o600 });
+  } catch { /* non-fatal */ }
   return token;
 }
-function getPairToken() {
+/** Kill the current token immediately: existing QR URLs stop working. */
+function revokePairToken() {
   const p = loadPair();
-  return p.token || rotatePairToken();
+  const token = p.token || crypto.randomBytes(18).toString('base64url');
+  try {
+    fs.writeFileSync(pairFile, JSON.stringify({ token, createdAt: p.createdAt || Date.now(), expiresAt: Date.now() - 1, disabled: true }), { mode: 0o600 });
+  } catch { /* non-fatal */ }
+  for (const ws of bridgedClients) { try { ws.close(1008, 'pairing revoked'); } catch { /* ignore */ } }
+  bridgedClients.clear();
+  return token;
+}
+/** Pairing info: auto-creates a fresh token when expired/missing; stays revoked until rotate. */
+function getPairInfo() {
+  const p = loadPair();
+  if (!p.token || (!p.disabled && (!p.expiresAt || p.expiresAt <= Date.now()))) {
+    const token = crypto.randomBytes(18).toString('base64url');
+    const expiresAt = Date.now() + PAIR_TTL_MS;
+    try { fs.writeFileSync(pairFile, JSON.stringify({ token, createdAt: Date.now(), expiresAt, disabled: false }), { mode: 0o600 }); } catch { /* non-fatal */ }
+    return { token, expiresAt, revoked: false };
+  }
+  return { token: p.token, expiresAt: p.expiresAt || 0, revoked: !!p.disabled };
+}
+function isPairValid(token) {
+  const p = loadPair();
+  return !!p.token && p.token === token && !p.disabled && !!p.expiresAt && p.expiresAt > Date.now();
 }
 function lanIPs() {
   const out = [];
@@ -115,6 +142,8 @@ function bridgeAgent(clientWs) {
     try { clientWs.close(1011, 'agent unreachable'); } catch { /* ignore */ }
     return;
   }
+  bridgedClients.add(clientWs);
+  clientWs.on('close', () => bridgedClients.delete(clientWs));
   const queue = []; // frames arriving before the agent socket is open
   let open = false;
   const flush = () => {
@@ -806,11 +835,15 @@ const server = http.createServer(async (req, res) => {
       try { return !!(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'electron', 'desktop-info.json'), 'utf8')).desktop); } catch { return false; }
     })();
     const agentCfg = readAgentCfg();
+    const info = getPairInfo();
     return json(200, {
       desktop,
       port: PORT,
       lan: lanIPs(),
-      pairToken: getPairToken(),
+      pairToken: info.token,
+      expiresAt: info.expiresAt,
+      revoked: info.revoked,
+      ttlMs: PAIR_TTL_MS,
       agent: agentCfg ? { port: agentCfg.port, hostname: agentCfg.hostname || '' } : null,
       remote: !isLoopback(req),
       hostname: os.hostname(),
@@ -819,6 +852,10 @@ const server = http.createServer(async (req, res) => {
   if (method === 'POST' && pathname === '/api/pairing/rotate') {
     const token = rotatePairToken();
     return json(200, { ok: true, pairToken: token });
+  }
+  if (method === 'POST' && pathname === '/api/pairing/revoke') {
+    const token = revokePairToken();
+    return json(200, { ok: true, revoked: true, pairToken: token });
   }
 
   // ---- built web app (serve dist/ so phones on the LAN can load VOX-OS) ----
@@ -848,7 +885,7 @@ server.on('upgrade', (req, socket, head) => {
   try { url = new URL(req.url, 'http://localhost'); } catch { socket.destroy(); return; }
   if (url.pathname === '/ws/agent') {
     const pair = url.searchParams.get('pair');
-    if (!pair || pair !== getPairToken()) {
+    if (!pair || !isPairValid(pair)) {
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;

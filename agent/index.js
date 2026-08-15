@@ -109,6 +109,25 @@ cfg.permissions = { ...DEFAULT_PERMS, ...(cfg.permissions || {}) };
 if (ALLOW_ALL) for (const k of Object.keys(cfg.permissions)) cfg.permissions[k] = 'allowed';
 for (const p of ALLOW_LIST) if (p in cfg.permissions) cfg.permissions[p] = 'allowed';
 
+// ---- real workspace files (FILES capability) --------------------------
+// VOX-OS reads/writes REAL files on disk through the agent. Everything is
+// rooted at ~/VOX-OS so the agent never touches the rest of the disk.
+const FS_ROOT = path.join(os.homedir(), 'VOX-OS');
+function safeRel(rel) {
+  if (typeof rel !== 'string' || !rel) return null;
+  const clean = String(rel).replace(/\\/g, '/').replace(/^\/+/, '');
+  const parts = clean.split('/').filter((p) => p && p !== '.');
+  if (parts.some((p) => p === '..')) return null; // no traversal
+  return parts.join('/');
+}
+function fsResolve(rel) {
+  const r = safeRel(rel);
+  if (!r) return null;
+  const full = path.join(FS_ROOT, r);
+  if (full !== FS_ROOT && !full.startsWith(FS_ROOT + path.sep)) return null;
+  return full;
+}
+
 const isTTY = Boolean(process.stdin.isTTY);
 let pendingPrompt = null;
 const ask = (question) => new Promise((resolve) => {
@@ -393,6 +412,71 @@ wss.on('connection', (ws, req) => {
       const child = sessions.get(String(msg.sid || msg.id));
       if (child) { try { child.kill(); } catch { /* ignore */ } sessions.delete(String(msg.sid || msg.id)); }
       return send(ws, { id: msg.id, ok: true });
+    }
+    // ---- real workspace files (Code Studio / File Manager on disk) ----
+    if (msg.type === 'fs_root') {
+      return send(ws, { id: msg.id, ok: true, root: FS_ROOT });
+    }
+    if (msg.type === 'fs_list') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const full = msg.path ? fsResolve(msg.path) : FS_ROOT; // '' = the workspace root
+      if (!full) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try {
+        const entries = fs.readdirSync(full, { withFileTypes: true }).map((d) => {
+          let size = 0; let mtime = 0;
+          try { const st = fs.statSync(path.join(full, d.name)); size = d.isFile() ? st.size : 0; mtime = st.mtimeMs; } catch { /* ignore */ }
+          return { name: d.name, isDir: d.isDirectory(), size, mtime };
+        }).sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+        return send(ws, { id: msg.id, ok: true, entries });
+      } catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.message }); }
+    }
+    if (msg.type === 'fs_read') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const full = fsResolve(msg.path);
+      if (!full) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try {
+        const st = fs.statSync(full);
+        if (!st.isFile()) return send(ws, { id: msg.id, ok: false, reason: 'not a file' });
+        if (st.size > 2 * 1024 * 1024) return send(ws, { id: msg.id, ok: false, reason: 'file too large (>2MB) — open it in a proper editor on the PC' });
+        return send(ws, { id: msg.id, ok: true, data: fs.readFileSync(full, 'utf8') });
+      } catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.code === 'ENOENT' ? 'not found' : e.message }); }
+    }
+    if (msg.type === 'fs_write') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const full = fsResolve(msg.path);
+      if (!full) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try {
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, String(msg.data ?? ''), 'utf8');
+        return send(ws, { id: msg.id, ok: true });
+      } catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.message }); }
+    }
+    if (msg.type === 'fs_mkdir') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const full = fsResolve(msg.path);
+      if (!full) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try { fs.mkdirSync(full, { recursive: true }); return send(ws, { id: msg.id, ok: true }); }
+      catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.message }); }
+    }
+    if (msg.type === 'fs_delete') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const full = fsResolve(msg.path);
+      if (!full) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try { fs.rmSync(full, { recursive: true, force: true }); return send(ws, { id: msg.id, ok: true }); }
+      catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.message }); }
+    }
+    if (msg.type === 'fs_rename') {
+      const r = await hasPermission('FILES');
+      if (!r.ok) return send(ws, { id: msg.id, ok: false, reason: r.reason });
+      const from = fsResolve(msg.path); const to = fsResolve(msg.to);
+      if (!from || !to) return send(ws, { id: msg.id, ok: false, reason: 'invalid path' });
+      try { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.renameSync(from, to); return send(ws, { id: msg.id, ok: true }); }
+      catch (e) { return send(ws, { id: msg.id, ok: false, reason: e.message }); }
     }
     return send(ws, { id: msg.id, ok: false, reason: 'unknown message type' });
   }

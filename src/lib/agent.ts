@@ -167,6 +167,22 @@ class VoxAgentClient {
   execOpen(sid: string, shell: string, cwd?: string): Promise<any> { return this.request('exec_open', { sid, shell, cwd }); }
   execInput(sid: string, data: string): Promise<void> { return this.request('exec_input', { sid, data }).then(() => undefined); }
   execClose(sid: string): Promise<void> { return this.request('exec_close', { sid }).then(() => undefined); }
+
+  // ---- real workspace files (FILES capability) ----
+  fsRoot(): Promise<{ root: string }> { return this.request('fs_root').then((m) => ({ root: String(m.root ?? '') })); }
+  fsList(path: string): Promise<DiskEntry[]> { return this.request('fs_list', { path }, 15000).then((m) => (Array.isArray(m.entries) ? m.entries : [])); }
+  fsRead(path: string): Promise<string> { return this.request('fs_read', { path }, 20000).then((m) => String(m.data ?? '')); }
+  fsWrite(path: string, data: string): Promise<void> { return this.request('fs_write', { path, data }, 20000).then(() => undefined); }
+  fsMkdir(path: string): Promise<void> { return this.request('fs_mkdir', { path }, 15000).then(() => undefined); }
+  fsDelete(path: string): Promise<void> { return this.request('fs_delete', { path }, 15000).then(() => undefined); }
+  fsRename(path: string, to: string): Promise<void> { return this.request('fs_rename', { path, to }, 15000).then(() => undefined); }
+}
+
+export interface DiskEntry {
+  name: string;
+  isDir: boolean;
+  size: number;
+  mtime: number;
 }
 
 export const agentClient = new VoxAgentClient();
