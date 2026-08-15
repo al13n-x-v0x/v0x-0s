@@ -7,8 +7,13 @@
 #
 #   Idea/endpoints adapted from santhoshsharuk/Vox-OS
 #   (whisper-service.py) — rewritten here stdlib-only so it
-#   runs anywhere with `pip install openai-whisper` and
-#   FFmpeg on PATH. No Flask, no web framework.
+#   runs anywhere with `pip install openai-whisper`.
+#   No Flask, no web framework.
+#
+#   Audio decoding:
+#     · WAV  -> decoded natively (stdlib `wave` + numpy),
+#               so FFmpeg is NOT required for WAV uploads.
+#     · other formats (webm/mp3/ogg/…) -> FFmpeg on PATH.
 #
 #   Run:   python3 tools/whisper-service.py
 #          (first run downloads the "base" model ~140 MB)
@@ -22,10 +27,11 @@
 import json
 import os
 import re
+import struct
 import sys
 import tempfile
 import threading
-import uuid
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("WHISPER_PORT", "5000"))
@@ -47,6 +53,58 @@ def load_model():
     model = whisper.load_model(MODEL)
     print(f"[whisper] model '{MODEL}' ready", flush=True)
     return model
+
+
+def decode_audio(path: str):
+    """Decode an audio file to a 16 kHz mono float32 numpy array.
+
+    WAV is decoded natively (stdlib `wave` + numpy) so FFmpeg is not
+    needed for the most common upload. Every other format falls back
+    to whisper.load_audio(), which requires FFmpeg on PATH.
+    """
+    import numpy as np
+
+    try:
+        with open(path, "rb") as fh:
+            magic = fh.read(12)
+    except OSError:
+        magic = b""
+
+    is_wav = magic.startswith(b"RIFF") and magic[8:12] == b"WAVE"
+    if is_wav:
+        with wave.open(path, "rb") as w:
+            nch, sw, rate, nframes = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+            raw = w.readframes(nframes)
+        if sw == 2:  # 16-bit PCM
+            audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+        elif sw == 4:  # 32-bit float (IEEE)
+            audio = np.frombuffer(raw, dtype=np.float32)
+        elif sw == 1:  # 8-bit unsigned PCM
+            audio = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+        else:
+            raise ValueError(f"unsupported WAV sample width: {sw} bytes")
+        if nch > 1:  # downmix to mono
+            audio = audio.reshape(-1, nch).mean(axis=1)
+        if rate != 16000:  # resample to what Whisper expects
+            audio = _resample(audio, rate, 16000)
+        return audio
+
+    import whisper
+
+    return whisper.load_audio(path)  # needs FFmpeg
+
+
+def _resample(audio, src_rate: int, dst_rate: int):
+    """Minimal linear-interpolation resampler (stdlib + numpy only)."""
+    import numpy as np
+
+    if src_rate == dst_rate:
+        return audio
+    duration = len(audio) / src_rate
+    n_out = max(1, int(round(duration * dst_rate)))
+    x_old = np.linspace(0.0, duration, num=len(audio), endpoint=False)
+    x_new = np.linspace(0.0, duration, num=n_out, endpoint=False)
+    return np.interp(x_new, x_old, audio).astype(np.float32)
 
 
 def parse_multipart(boundary: bytes, body: bytes):
@@ -133,13 +191,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "empty audio body"})
             return
 
-        # write to a temp file, transcribe, clean up
-        fd, path = tempfile.mkstemp(suffix=".webm")
+        # write to a temp file, decode, transcribe, clean up
+        fd, path = tempfile.mkstemp(suffix=".upload")
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(audio)
             try:
-                result = load_model().transcribe(path, fp16=False, language=lang, task="transcribe")
+                decoded = decode_audio(path)
+                result = load_model().transcribe(decoded, fp16=False, language=lang, task="transcribe")
                 transcript = (result.get("text") or "").strip()
             except Exception as exc:  # noqa: BLE001
                 self._json(500, {"error": f"transcription failed: {exc}"})
@@ -156,6 +215,13 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     if sys.version_info < (3, 8):
         sys.exit("Python 3.8+ required")
+    # Windows console defaults to cp1252 — force UTF-8 so the
+    # box-drawing banner and log lines never crash the service.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     try:
         import whisper  # noqa: F401  (probe import)
     except ImportError:

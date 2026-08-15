@@ -66,15 +66,56 @@ export async function recordWhisperAudio(
   return blob.size ? blob : null;
 }
 
+/** Convert any decodable audio blob (webm/ogg/mp4/wav) to 16-bit PCM WAV in-browser.
+ *  Lets the local service decode natively — no FFmpeg required on the host. */
+async function blobToWav(blob: Blob): Promise<Blob | null> {
+  try {
+    const ctx = new AudioContext();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    await ctx.close();
+    const chans = buf.numberOfChannels;
+    const len = buf.length;
+    const mono = new Float32Array(len);
+    for (let c = 0; c < chans; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) mono[i] += d[i] / chans;
+    }
+    // 16-bit PCM WAV (little-endian, 16 kHz — what Whisper expects)
+    const rate = 16000;
+    const outLen = Math.max(1, Math.round((len / buf.sampleRate) * rate));
+    const pcm = new Int16Array(outLen);
+    for (let i = 0; i < outLen; i++) {
+      const src = Math.min(len - 1, Math.floor((i / outLen) * len));
+      const s = Math.max(-1, Math.min(1, mono[src]));
+      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    const dataSize = pcm.byteLength;
+    const wav = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(wav);
+    const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+    writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+    writeStr(12, 'fmt '); view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); view.setUint16(22, 1, true); // PCM, mono
+    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+    writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+    new Int16Array(wav, 44).set(pcm);
+    return new Blob([wav], { type: 'audio/wav' });
+  } catch {
+    return null; // undecodable here — fall back to raw upload
+  }
+}
+
 /** Transcribe a recorded blob via the local service. */
 export async function transcribeViaWhisper(blob: Blob, baseUrl = DEFAULT_URL): Promise<string> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 90_000); // model warm-up can be slow
   try {
+    const wav = await blobToWav(blob);
     const res = await fetch(`${baseUrl}/transcribe`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: blob,
+      headers: { 'Content-Type': wav ? 'audio/wav' : 'application/octet-stream' },
+      body: wav ?? blob,
       signal: ctrl.signal,
     });
     clearTimeout(t);

@@ -25,3 +25,7 @@ Thumbs.db
 # build output + companion repo
 release/
 iso-repo/
+
+# local STT venv + test audio
+.venv-vox/
+*.wav
