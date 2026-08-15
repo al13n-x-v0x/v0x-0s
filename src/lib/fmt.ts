@@ -37,9 +37,16 @@ export function fmtBytes(n: number | null | undefined, digits = 1): string {
 }
 
 export function fmtDuration(ms: number | null | undefined): string {
-  if (ms == null) return '—';
+  if (ms == null || Number.isNaN(ms)) return '—';
   if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(2)}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}min ${Math.round(s % 60)}s`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}min`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
 }
 
 export function clamp(n: number, min: number, max: number): number {
@@ -55,7 +62,7 @@ export function pct(n: number, max = 100): number {
 }
 
 export function maskKey(key: string | null | undefined): string {
-  if (!key) return '';
+  if (!key) return '—';
   const safe = key.trim();
   if (safe.length <= 6) return '••••••••••••••••••';
   const head = safe.slice(0, 4);
@@ -67,5 +74,14 @@ export function dedupe<T>(arr: T[]): T[] {
 }
 
 export function deepMerge<T>(base: T, over: Partial<T>): T {
-  return { ...base, ...over };
+  const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(over ?? {})) {
+    const b = out[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && b && typeof b === 'object' && !Array.isArray(b)) {
+      out[k] = deepMerge(b as Record<string, unknown>, v as Record<string, unknown>);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out as T;
 }

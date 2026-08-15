@@ -28,7 +28,7 @@ export const SCAN_STEPS: ScanStep[] = [
   { id: 'build', label: 'Checking build configuration...', weight: 6, kind: ['full', 'project'] },
 ];
 
-interface CheckResult {
+export interface CheckResult {
   id: string;
   label: string;
   status: CheckStatus;

@@ -21,22 +21,26 @@ export function readFile(node: VNode, path: string[]): string | null {
 }
 
 export function writeFile(node: VNode, path: string[], content: string): VNode {
-  if (path.length === 0) return node;
+  if (path.length === 0 || node.kind !== 'dir') return node;
+  const dir = node as Extract<VNode, { kind: 'dir' }>;
   const [head, ...rest] = path;
-  if (node.kind !== 'dir') return node;
-  const idx = node.children.findIndex((c) => c.name === head);
-  if (idx === -1) {
-    if (rest.length === 0) {
-      const children = [...node.children, { kind: 'file' as const, name: head, content }];
-      return { ...node, children };
-    }
-    return node;
+  if (rest.length === 0) {
+    // leaf: create or overwrite the file
+    const children = [...dir.children];
+    const idx = children.findIndex((c) => c.name === head);
+    if (idx === -1) children.push({ kind: 'file', name: head, content });
+    else children[idx] = { kind: 'file', name: head, content };
+    return { ...dir, children };
   }
-  const child = node.children[idx];
-  const updated: VNode = rest.length === 0 ? { kind: 'file', name: child.name, content } : writeFile(child, rest, content);
-  const children = [...node.children];
-  children[idx] = updated;
-  return { ...node, children };
+  // intermediate dirs are created on the way down
+  const idx = dir.children.findIndex((c) => c.name === head);
+  if (idx === -1) {
+    const created = writeFile({ kind: 'dir', name: head, children: [] }, rest, content);
+    return { ...dir, children: [...dir.children, created] };
+  }
+  const children = [...dir.children];
+  children[idx] = writeFile(dir.children[idx], rest, content);
+  return { ...dir, children };
 }
 
 type DirNode = Extract<VNode, { kind: 'dir' }>;
