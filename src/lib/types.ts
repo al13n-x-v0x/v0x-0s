@@ -2,7 +2,7 @@
 // VOX-OS core domain types
 // ============================================================
 
-export type ThemeId = 'night' | 'cyber' | 'midnight' | 'graphite';
+export type ThemeId = 'night' | 'cyber' | 'midnight' | 'graphite' | 'emerald' | 'rose' | 'amber' | 'ocean';
 
 export type SectionId =
   | 'dashboard'
@@ -230,6 +230,10 @@ export interface Settings {
   // voice
   voiceEnabled: boolean;
   voiceAutoSpeak: boolean;
+  /** route spoken words to the AI chat (ChatGPT-style voice) */
+  voiceChat: boolean;
+  /** runtime accent override (ACCENTS key), applied as CSS vars */
+  accent: string;
   voiceSpeed: number;
   voicePitch: number;
   voiceVolume: number;

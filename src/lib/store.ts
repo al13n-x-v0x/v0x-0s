@@ -322,6 +322,8 @@ const DEFAULT_SETTINGS: Settings = {
   phoneQuick: ['voxai', 'terminal', 'github', 'recon', 'remote', 'settings'],
   voiceEnabled: true,
   voiceAutoSpeak: false,
+  voiceChat: false,
+  accent: '',
   voiceSpeed: 1,
   voicePitch: 1,
   voiceVolume: 1,
@@ -1693,6 +1695,11 @@ export const useVox = create<VoxState>()(
       addVoiceHistory: (text) => set({ voice: { ...get().voice, lastCommand: text, history: [{ time: Date.now(), text }, ...get().voice.history].slice(0, 50) } }),
       setVoiceStatus: (s, error) => set({ voice: { ...get().voice, status: s, error } }),
       executeVoiceCommand: (text) => {
+        // voice-chat mode: everything spoken goes to the AI conversation
+        if (get().settings.voiceChat) {
+          void get().sendMessage(text);
+          return 'Asked VOX: ' + text.slice(0, 60);
+        }
         const q = text.toLowerCase();
         let response = '';
         if (/(open|launch|start).*(terminal|shell)/.test(q) || q === 'terminal') {

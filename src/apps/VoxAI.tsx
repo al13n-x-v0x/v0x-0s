@@ -118,6 +118,21 @@ export function VoxAI() {
               placeholder={s.backend === 'online' ? 'Ask VOX anything about your project…' : 'AI backend offline — demo assistant active (DEMO responses)…'}
               className="flex-1 bg-transparent outline-none text-[12.5px] text-vox-text placeholder:text-vox-dim"
             />
+            <button
+              onClick={() => { s.setSettings({ voiceChat: !s.settings.voiceChat, voiceAutoSpeak: !s.settings.voiceChat ? true : s.settings.voiceAutoSpeak }); }}
+              title="ChatGPT-style voice conversation — say something, VOX answers aloud"
+              className={clsx('px-2 py-1.5 rounded-md border text-[9px] font-bold tracking-wider transition-colors', s.settings.voiceChat ? 'bg-violet-400/15 text-violet-200 border-violet-400/40' : 'text-vox-dim border-vox-line hover:text-vox-muted')}
+            >
+              🎙 VOICE {s.settings.voiceChat ? 'ON' : 'OFF'}
+            </button>
+            <button
+              onClick={() => (s.voice.status === 'listening' ? s.stopListening() : s.startListening())}
+              disabled={!s.settings.voiceEnabled || !s.voice.sttSupported}
+              title={s.voice.status === 'listening' ? 'Stop listening' : 'Speak to VOX (STT)'}
+              className={clsx('px-2 py-1.5 rounded-md border text-[9px] font-bold tracking-wider transition-colors', s.voice.status === 'listening' ? 'bg-red-400/15 text-red-300 border-red-400/40 animate-pulse' : 'text-vox-dim border-vox-line hover:text-vox-muted disabled:opacity-40')}
+            >
+              <Icon name={s.voice.status === 'listening' ? 'Square' : 'Mic'} size={13} /> {s.voice.status === 'listening' ? 'LISTENING' : 'MIC'}
+            </button>
             {s.aiThinking ? (
               <Button size="xs" variant="danger" onClick={() => s.stopGeneration()}>STOP</Button>
             ) : (

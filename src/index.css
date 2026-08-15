@@ -554,6 +554,26 @@ body {
   --vox-blue: #cbd5e1;
   --vox-violet: #e2e8f0;
 }
+[data-theme='emerald'] {
+  --vox-cyan: #34d399;
+  --vox-blue: #10b981;
+  --vox-violet: #2dd4bf;
+}
+[data-theme='rose'] {
+  --vox-cyan: #fb7185;
+  --vox-blue: #e11d48;
+  --vox-violet: #f472b6;
+}
+[data-theme='amber'] {
+  --vox-cyan: #fbbf24;
+  --vox-blue: #f59e0b;
+  --vox-violet: #fb923c;
+}
+[data-theme='ocean'] {
+  --vox-cyan: #38bdf8;
+  --vox-blue: #2563eb;
+  --vox-violet: #818cf8;
+}
 
 /* Focus ring for keyboard nav */
 :focus-visible {

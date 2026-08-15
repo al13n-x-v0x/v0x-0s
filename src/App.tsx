@@ -10,7 +10,7 @@ import { BootScreen, RecoveryScreen } from './components/BootScreen';
 import { WindowFrame } from './components/window';
 import { Icon } from './components/ui';
 import { Onboarding } from './components/Onboarding';
-import { APPS } from './lib/constants';
+import { APPS, ACCENTS } from './lib/constants';
 import { Dashboard } from './apps/Dashboard';
 import { PhoneLauncher } from './apps/PhoneLauncher';
 import { PhoneHome } from './apps/PhoneHome';
@@ -157,6 +157,18 @@ export default function App() {
     document.documentElement.classList.toggle('reduced-motion', st.settings.reducedMotion);
     document.documentElement.classList.toggle('high-contrast', st.settings.highContrast);
     document.documentElement.style.setProperty('--font-scale', String(st.settings.fontSize));
+    // runtime accent override (overrides the theme's accent vars)
+    const acc = ACCENTS.find((a) => a.id === st.settings.accent);
+    const root = document.documentElement;
+    if (acc) {
+      root.style.setProperty('--vox-cyan', acc.cyan);
+      root.style.setProperty('--vox-blue', acc.blue);
+      root.style.setProperty('--vox-violet', acc.violet);
+    } else {
+      root.style.removeProperty('--vox-cyan');
+      root.style.removeProperty('--vox-blue');
+      root.style.removeProperty('--vox-violet');
+    }
   }, [useVox((s) => s.settings)]);
 
   if (!booted) return <BootScreen />;

@@ -171,5 +171,24 @@ export const FILE_LANG: Record<string, string> = {
   json: 'json', yaml: 'yaml', yml: 'yaml', md: 'markdown', txt: 'plain', log: 'plain',
 };
 
+// ---------- Accent presets (runtime override of the accent CSS vars) ----------
+export interface Accent {
+  id: string;
+  label: string;
+  cyan: string;
+  blue: string;
+  violet: string;
+}
+export const ACCENTS: Accent[] = [
+  { id: 'cyan', label: 'Cyan', cyan: '#22d3ee', blue: '#3b82f6', violet: '#8b5cf6' },
+  { id: 'blue', label: 'Blue', cyan: '#60a5fa', blue: '#2563eb', violet: '#7c3aed' },
+  { id: 'violet', label: 'Violet', cyan: '#a78bfa', blue: '#7c3aed', violet: '#c084fc' },
+  { id: 'emerald', label: 'Emerald', cyan: '#34d399', blue: '#10b981', violet: '#2dd4bf' },
+  { id: 'rose', label: 'Rose', cyan: '#fb7185', blue: '#e11d48', violet: '#f472b6' },
+  { id: 'amber', label: 'Amber', cyan: '#fbbf24', blue: '#f59e0b', violet: '#fb923c' },
+  { id: 'lime', label: 'Lime', cyan: '#a3e635', blue: '#65a30d', violet: '#84cc16' },
+  { id: 'orange', label: 'Orange', cyan: '#fb923c', blue: '#f97316', violet: '#f43f5e' },
+];
+
 export const APP_VERSION = '0.1.0';
 export const APP_CODENAME = 'v0x-0s';

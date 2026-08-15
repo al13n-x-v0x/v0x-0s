@@ -2,7 +2,7 @@ import { useState } from 'react';
 import clsx from 'clsx';
 import { useVox } from '../lib/store';
 import type { ProviderId, ThemeId } from '../lib/types';
-import { APP_VERSION, PROVIDERS } from '../lib/constants';
+import { APP_VERSION, PROVIDERS, ACCENTS } from '../lib/constants';
 import { Badge, Button, Field, Icon, Input, Select, Slider, Toggle } from '../components/ui';
 import { sfx } from '../lib/sounds';
 import { speak } from '../lib/voice';
@@ -30,6 +30,10 @@ const THEMES: { id: ThemeId; label: string; swatch: string }[] = [
   { id: 'cyber', label: 'VOX CYBER', swatch: '#22d3ee' },
   { id: 'midnight', label: 'VOX MIDNIGHT', swatch: '#1e293b' },
   { id: 'graphite', label: 'VOX GRAPHITE', swatch: '#94a3b8' },
+  { id: 'emerald', label: 'VOX EMERALD', swatch: '#34d399' },
+  { id: 'rose', label: 'VOX ROSE', swatch: '#fb7185' },
+  { id: 'amber', label: 'VOX AMBER', swatch: '#fbbf24' },
+  { id: 'ocean', label: 'VOX OCEAN', swatch: '#38bdf8' },
 ];
 
 export function Settings() {
@@ -94,6 +98,14 @@ function Appearance() {
             <span className="text-[11.5px] font-semibold text-vox-text">{t.label}</span>
             {s.settings.theme === t.id && <Icon name="CheckCircle2" size={15} className="ml-auto text-cyan-300" />}
           </button>
+        ))}
+      </div>
+      <SectionTitle>Accent</SectionTitle>
+      <p className="text-[10.5px] text-vox-dim mb-2">Runtime accent override — applies over the selected theme.</p>
+      <div className="flex flex-wrap gap-2 mb-1">
+        <button data-active={!s.settings.accent} onClick={() => s.setSettings({ accent: '' })} className={clsx('px-3 py-1.5 rounded-lg border text-[10px] font-semibold tracking-wider uppercase transition-colors', !s.settings.accent ? 'border-cyan-400/50 bg-cyan-400/5 text-cyan-300' : 'border-vox-line text-vox-muted hover:text-vox-text')}>THEME DEFAULT</button>
+        {ACCENTS.map((a) => (
+          <button key={a.id} data-active={s.settings.accent === a.id} onClick={() => s.setSettings({ accent: a.id })} title={a.label} className={clsx('w-9 h-9 rounded-lg border transition-transform hover:scale-105', s.settings.accent === a.id ? 'border-white/80' : 'border-white/15')} style={{ background: `linear-gradient(135deg, ${a.cyan}, ${a.violet})` }} />
         ))}
       </div>
       <SectionTitle>Interface</SectionTitle>
@@ -231,6 +243,9 @@ function VoiceCfg() {
       </Row>
       <Row label="Auto speak responses" hint="VOX reads responses aloud with TTS when enabled.">
         <Toggle checked={s.settings.voiceAutoSpeak} onChange={(v) => s.setSettings({ voiceAutoSpeak: v })} label="Auto speak" />
+      </Row>
+      <Row label="Voice chat mode" hint="ChatGPT-style conversation — whatever you say goes to the AI, and its answer is spoken back.">
+        <Toggle checked={s.settings.voiceChat} onChange={(v) => s.setSettings({ voiceChat: v, voiceAutoSpeak: v ? true : s.settings.voiceAutoSpeak })} label="Voice chat" />
       </Row>
       <Row label="Wake word (future)" hint="'Hey VOX' continuous listening is architecturally supported but not active — the microphone is never silently recorded.">
         <Toggle checked={s.settings.wakeWord} onChange={(v) => s.setSettings({ wakeWord: v })} label="Wake word" />
