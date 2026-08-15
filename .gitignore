@@ -29,3 +29,7 @@ iso-repo/
 # local STT venv + test audio
 .venv-vox/
 *.wav
+
+# python
+__pycache__/
+*.pyc
