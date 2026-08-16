@@ -672,3 +672,13 @@ html[data-anim='off'] .win-min { animation: none !important; }
 .markdown-body hr { border: none; border-top: 1px solid rgba(148, 163, 184, 0.2); margin: 1em 0; }
 .markdown-body strong { color: #e8f0fa; }
 .markdown-body em { color: #c4b5fd; }
+
+/* Accessibility: honour reduced-motion preferences (Phase 13 of the directive) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

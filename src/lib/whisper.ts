@@ -66,6 +66,32 @@ export async function recordWhisperAudio(
   return blob.size ? blob : null;
 }
 
+/** Encode mono float samples as a 16-bit PCM WAV (little-endian, 16 kHz).
+ *  Pure — no Web Audio needed; the 16 kHz rate is what Whisper expects.
+ *  Resamples from `srcRate` by nearest-neighbour picking. */
+export function encodeWavPcm(mono: Float32Array, srcRate: number, rate = 16000): ArrayBuffer {
+  const len = mono.length;
+  const outLen = Math.max(1, Math.round((len / srcRate) * rate));
+  const pcm = new Int16Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const src = Math.min(len - 1, Math.floor((i / outLen) * len));
+    const s = Math.max(-1, Math.min(1, mono[src]));
+    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  const dataSize = pcm.byteLength;
+  const wav = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(wav);
+  const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true); // PCM, mono
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, 'data'); view.setUint32(40, dataSize, true);
+  new Int16Array(wav, 44).set(pcm);
+  return wav;
+}
+
 /** Convert any decodable audio blob (webm/ogg/mp4/wav) to 16-bit PCM WAV in-browser.
  *  Lets the local service decode natively — no FFmpeg required on the host. */
 async function blobToWav(blob: Blob): Promise<Blob | null> {
@@ -80,26 +106,7 @@ async function blobToWav(blob: Blob): Promise<Blob | null> {
       const d = buf.getChannelData(c);
       for (let i = 0; i < len; i++) mono[i] += d[i] / chans;
     }
-    // 16-bit PCM WAV (little-endian, 16 kHz — what Whisper expects)
-    const rate = 16000;
-    const outLen = Math.max(1, Math.round((len / buf.sampleRate) * rate));
-    const pcm = new Int16Array(outLen);
-    for (let i = 0; i < outLen; i++) {
-      const src = Math.min(len - 1, Math.floor((i / outLen) * len));
-      const s = Math.max(-1, Math.min(1, mono[src]));
-      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    const dataSize = pcm.byteLength;
-    const wav = new ArrayBuffer(44 + dataSize);
-    const view = new DataView(wav);
-    const writeStr = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
-    writeStr(0, 'RIFF'); view.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
-    writeStr(12, 'fmt '); view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); view.setUint16(22, 1, true); // PCM, mono
-    view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
-    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    writeStr(36, 'data'); view.setUint32(40, dataSize, true);
-    new Int16Array(wav, 44).set(pcm);
+    const wav = encodeWavPcm(mono, buf.sampleRate);
     return new Blob([wav], { type: 'audio/wav' });
   } catch {
     return null; // undecodable here — fall back to raw upload
