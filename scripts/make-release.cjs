@@ -1,4 +1,4 @@
-// make-release.cjs — creates the v1.3.0 release and uploads EXE + APKs + web zip.
+// make-release.cjs — creates the v1.3.1 release and uploads EXE + APKs + web zip.
 const fs = require('fs');
 const token = require('../server/.vox-keys.json').github;
 const OWNER = 'al13n-x-v0x';
@@ -6,19 +6,21 @@ const REPO = 'v0x-0s';
 const AUTH = { Authorization: 'Bearer ' + token };
 
 const body = [
-  '# VOX-OS v1.3.0 — Real Disk Files + Secure Pairing Sessions 🖥️📱💾',
+  '# VOX-OS v1.3.1 — Copyright-Protected & Build-Hardened 🛡️',
   '',
   'The futuristic developer OS command center. Real apps, real system control, real AI — on **Windows (EXE)**, **Android (APK)**, and in any browser.',
   '',
-  '## 🆕 What’s new in v1.3.0',
+  '## 🆕 What’s new in v1.3.1',
   '',
-  '- **Real disk files through the Desktop Agent** — Code Studio and File Manager now read and write **actual files on disk** (`~/VOX-OS/projects/…`), not just the in-memory sandbox. Projects auto-sync on agent connect; every save / create / rename / delete lands on the real filesystem. The sandbox stays as the offline fallback.',
-  '- **Agent FILES protocol** — new `fs_read / fs_write / fs_list / fs_mkdir / fs_delete / fs_rename` handlers rooted at `~/VOX-OS` with **path-traversal guards** (no escaping the workspace) and a 2MB file cap.',
-  '- **File Manager DISK mode** — flip the **SANDBOX / DISK** toggle to browse, edit and save real folders with live sizes and timestamps.',
-  '- **Code Studio DISK badge** — shows when your project is wired to real disk; edits mirror to `~/VOX-OS/projects/<project>` on save.',
-  '- **Pairing session expiry** — pairing tokens now expire automatically after **24h** (countdown chip on the pairing screen).',
-  '- **One-tap revocation** — the new **REVOKE** button kills the current token **and every connected phone session instantly**; the old QR links are permanently dead until you mint a new token.',
-  '- **EXE first-run pairing** — the desktop app auto-opens the **Phone Pairing** screen on its very first launch, so the phone can be connected with one QR scan before anything else.',
+  '- **© Copyright protection** — VOX-OS is now under the **VOX-OS Source License** (© 2026 AL13N Industries, All Rights Reserved). Study it for **inspiration**; copying, redistribution, repackaging and commercial use are prohibited without written permission. See [LICENSE](LICENSE).',
+  '- **Build hardening** — every production JS chunk is **obfuscated** (string encoding, control-flow flattening, identifier mangling) and carries a **copyright banner**; source maps are stripped. The shipped EXE, APKs and web bundle all contain the hardened build.',
+  '- **Visible copyright** — the About screen, README and all source entry points carry the AL13N Industries notice.',
+  '',
+  '## 🆕 In v1.3.0',
+  '',
+  '- **Real disk files** through the Desktop Agent — Code Studio + File Manager read/write `~/VOX-OS/projects/…` (path-traversal-guarded, 2MB cap)',
+  '- **Pairing session expiry** (24h TTL) + **one-tap revocation** that kills all connected phones instantly',
+  '- **EXE first-run** auto-opens the Phone Pairing screen',
   '',
   '## 🆕 In v1.2.0',
   '',
@@ -75,7 +77,7 @@ async function upload(url, file) {
 }
 
 (async () => {
-  const tag = 'v1.3.0';
+  const tag = 'v1.3.1';
   // delete the tag+release if it exists (idempotent reruns)
   try {
     const rel = await api(`/repos/${OWNER}/${REPO}/releases/tags/${tag}`);
