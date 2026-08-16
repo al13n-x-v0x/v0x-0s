@@ -1,4 +1,4 @@
-// make-release.cjs — creates the v1.3.1 release and uploads EXE + APKs + web zip.
+// make-release.cjs — creates the v1.3.2 release (fixed portable web zip).
 const fs = require('fs');
 const token = require('../server/.vox-keys.json').github;
 const OWNER = 'al13n-x-v0x';
@@ -6,15 +6,19 @@ const REPO = 'v0x-0s';
 const AUTH = { Authorization: 'Bearer ' + token };
 
 const body = [
-  '# VOX-OS v1.3.1 — Copyright-Protected & Build-Hardened 🛡️',
+  '# VOX-OS v1.3.2 — Portable web bundle fixed 📦',
   '',
-  'The futuristic developer OS command center. Real apps, real system control, real AI — on **Windows (EXE)**, **Android (APK)**, and in any browser.',
+  'The futuristic developer OS command center. Real apps, real system control, real AI — on **Windows (EXE)**, **Android (APK)**, **Raspberry Pi (image)**, and in any browser.',
   '',
-  '## 🆕 What’s new in v1.3.1',
+  '## 🆕 What’s new in v1.3.2',
   '',
-  '- **© Copyright protection** — VOX-OS is now under the **VOX-OS Source License** (© 2026 AL13N Industries, All Rights Reserved). Study it for **inspiration**; copying, redistribution, repackaging and commercial use are prohibited without written permission. See [LICENSE](LICENSE).',
-  '- **Build hardening** — every production JS chunk is **obfuscated** (string encoding, control-flow flattening, identifier mangling) and carries a **copyright banner**; source maps are stripped. The shipped EXE, APKs and web bundle all contain the hardened build.',
-  '- **Visible copyright** — the About screen, README and all source entry points carry the AL13N Industries notice.',
+  '- **Portable web bundle fixed** — `vox-os-web.zip` now ships the **full self-host bundle**: `dist/` + `server/` + `agent/` + the `ws` runtime dep + a `type:module` manifest. Previously it contained only the static site, so the bootable ISO kiosk / Raspberry Pi image / on-device installer booted a shell with no backend, no Desktop Agent, no AI proxy.',
+  '- **Raspberry Pi image** — new `VOX-OS-pi-arm64.img` (built from Raspberry Pi OS Desktop via GitHub Actions) in the [v0x-0s-iso](https://github.com/al13n-x-v0x/v0x-0s-iso) repo, plus a one-command `setup-pi.sh` for a Pi you already have.',
+  '',
+  '## 🆕 In v1.3.1',
+  '',
+  '- **© Copyright protection** — VOX-OS Source License (© 2026 AL13N Industries, All Rights Reserved). Study it for **inspiration**; copying, redistribution, repackaging and commercial use are prohibited without written permission.',
+  '- **Build hardening** — every production JS chunk is obfuscated + carries a copyright banner; source maps stripped.',
   '',
   '## 🆕 In v1.3.0',
   '',
@@ -32,10 +36,10 @@ const body = [
   '',
   '| Asset | What it is |',
   '| ----- | ---------- |',
-  '| `VOX-OS-Windows.exe` | Portable Windows app — full OS + Desktop Agent + pairing screen (no install needed) |',
-  '| `VOX-OS.apk` | Debug Android build — scan the QR to control your PC from your phone |',
-  '| `VOX-OS-release.apk` | Signed Android release build |',
-  '| `vox-os-web.zip` | Web bundle for the bootable ISO kiosk |',
+  '| `VOX-OS-Windows.exe` | Portable Windows app — full OS + Desktop Agent + pairing screen (unchanged from v1.3.1) |',
+  '| `VOX-OS.apk` | Debug Android build (unchanged from v1.3.1) |',
+  '| `VOX-OS-release.apk` | Signed Android release build (unchanged from v1.3.1) |',
+  '| `vox-os-web.zip` | **Fixed** portable web bundle — full backend + agent for ISO / Pi / self-host |',
   '',
   '## 🔑 Setup',
   '',
@@ -49,6 +53,7 @@ const body = [
   '- **Developers** — Code Studio on real disk, terminal, Git, AI agents, Dev Toolkit',
   '- **Gamers** — GX Browser, boost profiles, system tuning',
   '- **Power users** — Windows system apps, V0X-ST0RE, My Apps, full remote control',
+  '- **Pi / homelab** — flash the image or run `setup-pi.sh` and VOX-OS becomes a LAN appliance',
   '',
   'Security: pairing tokens expire (24h), revoke instantly, and the agent FS never leaves `~/VOX-OS`.',
   '',
@@ -77,7 +82,9 @@ async function upload(url, file) {
 }
 
 (async () => {
-  const tag = 'v1.3.1';
+  const tag = 'v1.3.2';
+  // The portable web bundle is the point of this release — build it first.
+  require('child_process').execFileSync(process.execPath, [require('path').join(__dirname, 'make-web-zip.cjs')], { stdio: 'inherit' });
   // delete the tag+release if it exists (idempotent reruns)
   try {
     const rel = await api(`/repos/${OWNER}/${REPO}/releases/tags/${tag}`);
@@ -97,12 +104,9 @@ async function upload(url, file) {
   });
   console.log('release created:', release.html_url);
 
-  const assets = [
-    ['VOX-OS-Windows.exe', 'application/octet-stream'],
-    ['VOX-OS.apk', 'application/vnd.android.package-archive'],
-    ['VOX-OS-release.apk', 'application/vnd.android.package-archive'],
-    ['vox-os-web.zip', 'application/zip'],
-  ];
+  // v1.3.2 ships the fixed web zip; the EXE/APKs are byte-identical to v1.3.1
+  // and live in the v1.3.1 release, so only the web zip is uploaded here.
+  const assets = [['vox-os-web.zip', 'application/zip']];
   for (const [file, ct] of assets) {
     if (!fs.existsSync(file)) { console.log('SKIP (missing):', file); continue; }
     const asset = await upload(release.upload_url.replace('{?name,label}', `?name=${encodeURIComponent(file)}`), file);
