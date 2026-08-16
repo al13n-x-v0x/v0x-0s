@@ -1,4 +1,4 @@
-// make-release.cjs — creates the v1.2.0 release and uploads EXE + APKs + web zip.
+// make-release.cjs — creates the v1.3.0 release and uploads EXE + APKs + web zip.
 const fs = require('fs');
 const token = require('../server/.vox-keys.json').github;
 const OWNER = 'al13n-x-v0x';
@@ -6,20 +6,25 @@ const REPO = 'v0x-0s';
 const AUTH = { Authorization: 'Bearer ' + token };
 
 const body = [
-  '# VOX-OS v1.2.0 — Phone Pairing + Dev Toolkit 🖥️📱',
+  '# VOX-OS v1.3.0 — Real Disk Files + Secure Pairing Sessions 🖥️📱💾',
   '',
   'The futuristic developer OS command center. Real apps, real system control, real AI — on **Windows (EXE)**, **Android (APK)**, and in any browser.',
   '',
-  '## 🆕 What\u2019s new in v1.2.0',
+  '## 🆕 What’s new in v1.3.0',
   '',
-  '- **LAN Phone Pairing** — the EXE shows a QR screen: scan once and your phone controls the laptop over Wi-Fi (real agent bridge, token-gated, agent token never leaves the PC)',
-  '- **voxos:// deep links** — scanning the app QR opens the VOX-OS APK straight into remote-control mode',
-  '- **Dev Toolkit** — preloaded cards for **freebuff**, **codebuff**, **Gemini CLI** with exact npm installs, live RUN / INSTALL / VERSION through the real terminal, and one-tap **Code Studio**',
-  '- **Backend serves the web app** — phones/browsers on the LAN load VOX-OS straight from the laptop',
+  '- **Real disk files through the Desktop Agent** — Code Studio and File Manager now read and write **actual files on disk** (`~/VOX-OS/projects/…`), not just the in-memory sandbox. Projects auto-sync on agent connect; every save / create / rename / delete lands on the real filesystem. The sandbox stays as the offline fallback.',
+  '- **Agent FILES protocol** — new `fs_read / fs_write / fs_list / fs_mkdir / fs_delete / fs_rename` handlers rooted at `~/VOX-OS` with **path-traversal guards** (no escaping the workspace) and a 2MB file cap.',
+  '- **File Manager DISK mode** — flip the **SANDBOX / DISK** toggle to browse, edit and save real folders with live sizes and timestamps.',
+  '- **Code Studio DISK badge** — shows when your project is wired to real disk; edits mirror to `~/VOX-OS/projects/<project>` on save.',
+  '- **Pairing session expiry** — pairing tokens now expire automatically after **24h** (countdown chip on the pairing screen).',
+  '- **One-tap revocation** — the new **REVOKE** button kills the current token **and every connected phone session instantly**; the old QR links are permanently dead until you mint a new token.',
+  '- **EXE first-run pairing** — the desktop app auto-opens the **Phone Pairing** screen on its very first launch, so the phone can be connected with one QR scan before anything else.',
   '',
-  '## 🆕 In v1.1.0',
+  '## 🆕 In v1.2.0',
   '',
-  '- System Apps (open real Windows control panels), V0X-ST0RE (winget installs), GX Browser, My Apps (real installed apps), 4 AI providers (Groq/Gemini/OpenAI/Anthropic), v0x-0s DEV_OPS_MAX / META_GAMER_OS persona',
+  '- **LAN Phone Pairing** — scan once, control the laptop over Wi-Fi (agent bridge, token-gated, agent token never leaves the PC)',
+  '- **voxos:// deep links** — the app QR opens the APK straight into remote-control mode',
+  '- **Dev Toolkit** — freebuff / codebuff / Gemini CLI install cards + live terminal actions',
   '',
   '## 📦 Downloads',
   '',
@@ -32,56 +37,74 @@ const body = [
   '',
   '## 🔑 Setup',
   '',
-  '1. Open the EXE (or `npm run dev`), start the **Desktop Agent**',
-  '2. Open **Phone Pairing** — scan the QR with your phone',
-  '3. Add any AI key in **API Manager** (Groq / Gemini / OpenAI / Anthropic) + your GitHub PAT',
-  '4. Open **Dev Toolkit** — detect, install and run freebuff / codebuff / Gemini CLI',
+  '1. Open the EXE (or `npm run dev`) — on first launch it opens **Phone Pairing** automatically',
+  '2. Scan the QR with your phone to control the laptop from the LAN',
+  '3. Start the **Desktop Agent** to arm real telemetry, shell sessions, and **real disk files**',
+  '4. Add any AI key in **API Manager** (Groq / Gemini / OpenAI / Anthropic) + your GitHub PAT',
   '',
   '## 🧰 Built for',
   '',
-  '- **Devs** — terminal, AI engine, GitHub center, secret scanner, workspace manager, hacking lab, dev CLIs',
-  '- **Gamers** — GX browser dock, gaming boosts, system monitoring, Roblox toolkit',
-  '- **Everyone** — phone widgets, mobile remote, dark neon glass UI',
+  '- **Developers** — Code Studio on real disk, terminal, Git, AI agents, Dev Toolkit',
+  '- **Gamers** — GX Browser, boost profiles, system tuning',
+  '- **Power users** — Windows system apps, V0X-ST0RE, My Apps, full remote control',
   '',
-  '> 🏆 MIT licensed · open source · **A Dev\u2019s First Choice**',
+  'Security: pairing tokens expire (24h), revoke instantly, and the agent FS never leaves `~/VOX-OS`.',
+  '',
+  '> **AL13N Industries** · “Powerful under the hood. Simple on the surface.”',
 ].join('\n');
 
-(async () => {
-  const rel = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases`, {
-    method: 'POST',
-    headers: { ...AUTH, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tag_name: 'v1.2.0',
-      target_commitish: 'main',
-      name: 'VOX-OS v1.2.0 — Phone Pairing + Dev Toolkit',
-      body,
-      draft: false,
-      prerelease: false,
-    }),
+async function api(path, opts = {}) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    method: opts.method || 'GET',
+    headers: { ...AUTH, 'Content-Type': 'application/json', Accept: 'application/vnd.github+json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  const rb = await rel.json();
-  if (rel.status !== 201) {
-    console.error('release failed:', rel.status, rb.message || JSON.stringify(rb));
-    process.exit(1);
-  }
-  console.log('release created:', rb.html_url);
+  if (!res.ok) throw new Error(`GitHub ${path} → HTTP ${res.status}: ${await res.text().catch(() => '')}`);
+  return res.json();
+}
+
+async function upload(url, file) {
+  const buf = fs.readFileSync(file);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: AUTH.Authorization, 'Content-Type': 'application/octet-stream', 'Content-Length': String(buf.length) },
+    body: buf,
+  });
+  if (!res.ok) throw new Error(`Upload ${file} → HTTP ${res.status}`);
+  return res.json();
+}
+
+(async () => {
+  const tag = 'v1.3.0';
+  // delete the tag+release if it exists (idempotent reruns)
+  try {
+    const rel = await api(`/repos/${OWNER}/${REPO}/releases/tags/${tag}`);
+    await api(`/repos/${OWNER}/${REPO}/releases/${rel.id}`, { method: 'DELETE' });
+  } catch { /* first run */ }
+  try { await api(`/repos/${OWNER}/${REPO}/git/refs/tags/${tag}`, { method: 'DELETE' }); } catch { /* first run */ }
+
+  const ref = await api(`/repos/${OWNER}/${REPO}/git/ref/heads/main`);
+  await api(`/repos/${OWNER}/${REPO}/git/refs`, {
+    method: 'POST',
+    body: { ref: `refs/tags/${tag}`, sha: ref.object.sha },
+  });
+
+  const release = await api(`/repos/${OWNER}/${REPO}/releases`, {
+    method: 'POST',
+    body: { tag_name: tag, name: `VOX-OS ${tag}`, body, draft: false, prerelease: false },
+  });
+  console.log('release created:', release.html_url);
 
   const assets = [
-    ['VOX-OS-Windows.exe', 'VOX-OS-Windows.exe', 'application/octet-stream'],
-    ['android/app/build/outputs/apk/debug/app-debug.apk', 'VOX-OS.apk', 'application/vnd.android.package-archive'],
-    ['android/app/build/outputs/apk/release/app-release.apk', 'VOX-OS-release.apk', 'application/vnd.android.package-archive'],
-    ['vox-os-web.zip', 'vox-os-web.zip', 'application/zip'],
+    ['VOX-OS-Windows.exe', 'application/octet-stream'],
+    ['VOX-OS.apk', 'application/vnd.android.package-archive'],
+    ['VOX-OS-release.apk', 'application/vnd.android.package-archive'],
+    ['vox-os-web.zip', 'application/zip'],
   ];
-  for (const [file, name, ct] of assets) {
-    const data = fs.readFileSync(file);
-    console.log(`uploading ${name} (${(data.length / 1048576).toFixed(1)} MB)…`);
-    const up = await fetch(
-      `https://uploads.github.com/repos/${OWNER}/${REPO}/releases/${rb.id}/assets?name=${encodeURIComponent(name)}`,
-      { method: 'POST', headers: { ...AUTH, 'Content-Type': ct }, body: data }
-    );
-    const ub = await up.json();
-    if (up.status >= 300) console.error(`  ${name} failed:`, up.status, ub.message);
-    else console.log(`  ✓ ${name}`);
+  for (const [file, ct] of assets) {
+    if (!fs.existsSync(file)) { console.log('SKIP (missing):', file); continue; }
+    const asset = await upload(release.upload_url.replace('{?name,label}', `?name=${encodeURIComponent(file)}`), file);
+    console.log('uploaded:', asset.name, `(${(fs.statSync(file).size / 1024 / 1024).toFixed(1)} MB)`);
   }
-  console.log('done:', rb.html_url);
-})().catch((e) => { console.error('ERR', e.message); process.exit(1); });
+  console.log('DONE —', release.html_url);
+})().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
