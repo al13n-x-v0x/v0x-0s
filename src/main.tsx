@@ -1,3 +1,5 @@
+// VOX-OS © 2026 AL13N Industries — All Rights Reserved.
+// Licensed for use and inspiration; copying, redistribution and reverse engineering prohibited.
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

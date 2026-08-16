@@ -453,6 +453,14 @@ function AboutCfg() {
       <div className="mt-6">
         <Button variant="ghost" icon="Stethoscope" onClick={() => void s.runDiagnostics()}>RUN SYSTEM DIAGNOSTICS</Button>
       </div>
+      <div className="mt-8 pt-4 border-t border-white/5">
+        <p className="text-[10.5px] font-mono text-vox-dim leading-relaxed">
+          © 2026 AL13N Industries — All Rights Reserved.
+        </p>
+        <p className="text-[10.5px] font-mono text-vox-dim leading-relaxed mt-1">
+          Licensed for use and inspiration — copying, redistribution and reverse engineering are prohibited under the VOX-OS Source License.
+        </p>
+      </div>
     </div>
   );
 }

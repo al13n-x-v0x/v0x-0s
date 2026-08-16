@@ -5,7 +5,7 @@
 
 **A futuristic developer operating environment — code, terminals, AI, GitHub, security tools, and remote control — in one shell.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-8b5cf6.svg?style=for-the-badge)](LICENSE)
+[![License: All Rights Reserved](https://img.shields.io/badge/License-All%20Rights%20Reserved-8b5cf6.svg?style=for-the-badge)](LICENSE)
 [![Made with React](https://img.shields.io/badge/Made%20with-React-22d3ee?style=for-the-badge&logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-6-646cff?style=for-the-badge&logo=vite)](https://vitejs.dev)
@@ -295,7 +295,13 @@ android/    Capacitor native project (builds VOX-OS.apk)
 
 ## 📜 License
 
-**MIT** — do whatever you want with it (see [LICENSE](LICENSE)). Built with ❤️ and way too much caffeine.
+**© 2026 AL13N Industries — All Rights Reserved.** See the full [LICENSE](LICENSE) for the legal text.
+
+- ✅ **You may** study it for **inspiration**, and run it personally on your own devices. If your work is inspired by VOX-OS, credit it: *"Inspired by VOX-OS (c) AL13N Industries"*.
+- ❌ **You may NOT** copy, redistribute, repackage, sell, or commercially use the source code, design, assets, or branding without written permission.
+- 🛡️ Production builds are **obfuscated** and carry a copyright banner in every JS chunk.
+
+Built with ❤️ and way too much caffeine.
 
 <div align="center">
 

@@ -1,3 +1,4 @@
+// VOX-OS © 2026 AL13N Industries — All Rights Reserved.
 import { Component, type ReactNode, useEffect, useState } from 'react';
 import { useVox } from './lib/store';
 import { TitleBar } from './components/TitleBar';

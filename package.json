@@ -1,5 +1,5 @@
-{
-  "name": "v0x-0s",
+{    "name": "v0x-0s",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "version": "1.1.0",
   "description": "VOX-OS — A Dev's First Choice. A futuristic developer operating environment.",
@@ -7,7 +7,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/harden-build.cjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "server": "node server/index.js",
@@ -47,6 +47,7 @@
     "autoprefixer": "^10.4.20",
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
+    "javascript-obfuscator": "^5.5.0",
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",
